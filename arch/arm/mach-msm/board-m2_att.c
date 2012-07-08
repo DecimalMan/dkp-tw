@@ -172,6 +172,10 @@
 #include <linux/sec_jack.h>
 #endif
 
+#ifdef CONFIG_KEXEC_HARDBOOT
+#include <asm/kexec.h>
+#endif
+
 #ifdef CONFIG_TOUCHSCREEN_MMS144
 struct tsp_callbacks *charger_callbacks;
 struct tsp_callbacks {
@@ -1054,6 +1058,17 @@ static void __init msm8960_reserve(void)
 		ret = memblock_remove(address, size);
 		BUG_ON(ret);
 	}
+
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	if (memblock_remove(RAM_CONSOLE_START, RAM_CONSOLE_SIZE) == 0) {
+		ram_console_resource[0].start = RAM_CONSOLE_START;
+		ram_console_resource[0].end   = RAM_CONSOLE_START+RAM_CONSOLE_SIZE-1;
+	}
+#endif
+
+#ifdef CONFIG_KEXEC_HARDBOOT
+	memblock_remove(KEXEC_HB_PAGE_ADDR, SZ_4K);
+#endif
 }
 
 static int msm8960_change_memory_power(u64 start, u64 size,
