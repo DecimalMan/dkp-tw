@@ -294,6 +294,7 @@ static int modem_subsystem_restart_init(void)
 	return ssr_register_subsystem(&modem_8960);
 }
 
+#ifdef CONFIG_DEBUG_FS
 static int modem_debug_set(void *data, u64 val)
 {
 	if (val == 1)
@@ -323,6 +324,7 @@ static int modem_debugfs_init(void)
 		&modem_debug_fops);
 	return 0;
 }
+#endif
 
 static int __init modem_8960_init(void)
 {
@@ -421,7 +423,9 @@ static int __init modem_8960_init(void)
 	pr_debug("After create_ramdump_device: kernel\n");
 	}
 #endif
+#ifdef CONFIG_DEBUG_FS
 	ret = modem_debugfs_init();
+#endif
 
 	pr_info("%s: modem fatal driver init'ed.\n", __func__);
 	return ret;

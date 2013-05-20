@@ -375,7 +375,9 @@ void kgsl_gpummu_destroy_pagetable(void *mmu_specific_pt)
 	kgsl_ptpool_free((struct kgsl_ptpool *)kgsl_driver.ptpool,
 				gpummu_pt->base.hostptr);
 
+#ifdef KGSL_STATS
 	kgsl_driver.stats.coherent -= KGSL_PAGETABLE_SIZE;
+#endif
 
 	kfree(gpummu_pt->tlbflushfilter.base);
 

@@ -26,8 +26,12 @@
 #include <linux/workqueue.h>
 #include <linux/gpio.h>
 #include <linux/string.h>
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
+#endif
+
+#ifdef CONFIG_INTERACTION_HINTS
+#include <linux/cpufreq.h>
 #endif
 
 struct gpio_button_data {
@@ -332,7 +336,7 @@ static void gpio_keys_report_event(struct gpio_button_data *bdata)
 	button->active_low;
 	static int count;
 
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 	sec_debug_check_crash_key(button->code, state);
 #endif
 
@@ -366,6 +370,15 @@ static void gpio_keys_report_event(struct gpio_button_data *bdata)
 			}
 		}
 	input_sync(input);
+#ifdef CONFIG_INTERACTION_HINTS
+	if (button->code == KEY_HOMEPAGE) {
+		/* Bump initially regardless of state.  cpufreq_set_interactivity() will filter. */
+		cpufreq_set_interactivity(1, INTERACT_ID_HARDKEY);
+		/* Unset if this is a release event. */
+		if (!state)
+			cpufreq_set_interactivity(0, INTERACT_ID_HARDKEY);
+	}
+#endif
 }
 
 static void gpio_keys_work_func(struct work_struct *work)
@@ -734,6 +747,9 @@ static int __devexit gpio_keys_remove(struct platform_device *pdev)
 	}
 
 	input_unregister_device(input);
+#ifdef CONFIG_INTERACTION_HINTS
+	cpufreq_set_interactivity(0, INTERACT_ID_HARDKEY);
+#endif
 
 	return 0;
 }
@@ -754,6 +770,9 @@ static int gpio_keys_suspend(struct device *dev)
 			}
 		}
 	}
+#ifdef CONFIG_INTERACTION_HINTS
+	cpufreq_set_interactivity(0, INTERACT_ID_HARDKEY);
+#endif
 	return 0;
 }
 

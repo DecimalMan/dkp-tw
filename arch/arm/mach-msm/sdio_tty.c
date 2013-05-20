@@ -80,7 +80,7 @@ struct dentry *sdio_tty_debug_root;
 struct dentry *sdio_tty_debug_info;
 #endif
 
-#define DEBUG_MSG(sdio_tty_drv, x...) if (sdio_tty_drv->debug_msg_on) pr_info(x)
+#define DEBUG_MSG(sdio_tty_drv, x...)
 
 /*
  * Enable sdio_tty debug messages

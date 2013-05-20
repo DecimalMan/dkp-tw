@@ -26,10 +26,14 @@ enum {
 	MSM_SPM_DEBUG_VCTL = 1U << 1,
 };
 
+#ifdef DEBUG
 static int msm_spm_debug_mask;
 module_param_named(
 	debug_mask, msm_spm_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
 );
+#else
+#define msm_spm_debug_mask (0)
+#endif
 
 #define MSM_SPM_PMIC_STATE_IDLE  0
 

@@ -29,6 +29,7 @@
 #include <linux/completion.h>
 #include <linux/mutex.h>
 #include <linux/syscore_ops.h>
+#include <linux/dkp.h>
 
 #include <trace/events/power.h>
 #include <linux/semaphore.h>
@@ -501,6 +502,26 @@ static ssize_t store_scaling_min_freq
 	return count;
 }
 
+static struct freq_work_struct {
+	struct work_struct work;
+	unsigned int freq;
+	struct cpufreq_policy *policy;
+} enable_oc_work;
+void acpuclk_enable_oc_freqs(unsigned int freq);
+
+static void do_enable_oc(struct work_struct *work) {
+	struct cpufreq_policy new_policy;
+	struct cpufreq_policy *policy =
+		((struct freq_work_struct *) work)->policy;
+	if (cpufreq_get_policy(&new_policy, policy->cpu))
+		return;
+	new_policy.max = ((struct freq_work_struct *) work)->freq;
+	acpuclk_enable_oc_freqs(new_policy.max);
+	policy->cpuinfo.max_freq = new_policy.max;
+	if (__cpufreq_set_policy(policy, &new_policy))
+		return;
+	policy->user_policy.max = policy->max;
+}
 static ssize_t store_scaling_max_freq
 	(struct cpufreq_policy *policy, const char *buf, size_t count)
 {
@@ -510,6 +531,12 @@ static ssize_t store_scaling_max_freq
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
 		return -EINVAL;
+
+	if (value > BOOT_FREQ_LIMIT) {
+		enable_oc_work.freq = value;
+		enable_oc_work.policy = policy;
+		schedule_work((struct work_struct *) &enable_oc_work);
+	}
 
 	if (policy->cpu == BOOT_CPU) {
 		if (value >= MAX_FREQ_LIMIT)
@@ -537,7 +564,6 @@ static ssize_t show_cpuinfo_cur_freq(struct cpufreq_policy *policy,
 	return sprintf(buf, "%u\n", cur_freq);
 }
 
-
 /**
  * show_scaling_governor - show the current policy for the specified CPU
  */
@@ -553,6 +579,33 @@ static ssize_t show_scaling_governor(struct cpufreq_policy *policy, char *buf)
 	return -EINVAL;
 }
 
+/**
+ * auto-hotplug tuners, to be merged into governor settings as needed
+ */
+int hotplug_intpulse = 0;
+int hotplug_sampling_periods = 15;
+int hotplug_sampling_rate = 2000 / HZ;
+int __used hotplug_enable_all_threshold = 1000;
+int hotplug_enable_one_threshold = 250;
+int hotplug_disable_one_threshold = 125;
+static __DKP(hotplug_intpulse, 0, 1, NULL);
+static __DKP(hotplug_sampling_periods, 2, 15, NULL);
+static __DKP(hotplug_sampling_rate, 1, 10, NULL);
+//static __DKP(hotplug_enable_all_threshold, 100, 1000, NULL);
+static __DKP(hotplug_enable_one_threshold, 100, 1000, NULL);
+static __DKP(hotplug_disable_one_threshold, 0, 1000, NULL);
+static struct attribute *hotplug_attrs[] = {
+        &dkp_attr(hotplug_intpulse),
+        &dkp_attr(hotplug_sampling_periods),
+        &dkp_attr(hotplug_sampling_rate),
+        //&dkp_attr(hotplug_enable_all_threshold),
+        &dkp_attr(hotplug_enable_one_threshold),
+        &dkp_attr(hotplug_disable_one_threshold),
+        NULL
+};
+static struct attribute_group hotplug_attr_grp = {
+    .attrs = hotplug_attrs,
+};
 
 /**
  * store_scaling_governor - store policy for the specified CPU
@@ -582,6 +635,11 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 
 	policy->user_policy.policy = policy->policy;
 	policy->user_policy.governor = policy->governor;
+
+	if (!policy->cpu && !(policy->governor->flags & BIT(GOVFLAGS_HOTPLUG))) {
+		hotplug_attr_grp.name = policy->governor->name;
+		sysfs_unmerge_group(cpufreq_global_kobject, &hotplug_attr_grp);
+	}
 
 	if (ret)
 		return ret;
@@ -683,6 +741,32 @@ static ssize_t show_scaling_setspeed(struct cpufreq_policy *policy, char *buf)
 	return policy->governor->show_setspeed(policy, buf);
 }
 
+/* Per-core UV interface */
+ssize_t acpuclk_store_vdd_table(const char *buf, size_t count);
+ssize_t acpuclk_show_vdd_table(char *buf, char *fmt, int fdiv, int vdiv);
+static ssize_t store_UV_mV_table(struct cpufreq_policy *policy,
+					const char *buf, size_t count) {
+	return acpuclk_store_vdd_table(buf, count);
+}
+static ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf) {
+	return acpuclk_show_vdd_table(buf, "%umhz: %u mV\n", 1000, 1000);
+}
+
+/* Per-core vmin interface */
+void acpuclk_set_override_vmin(int enable);
+int acpuclk_get_override_vmin(void);
+static ssize_t store_override_vmin(struct cpufreq_policy *policy,
+					const char *buf, size_t count) {
+	int val;
+	if (sscanf(buf, "%i", &val) != 1)
+		return -EINVAL;
+	acpuclk_set_override_vmin(val);
+	return count;
+}
+static ssize_t show_override_vmin(struct cpufreq_policy *policy, char *buf) {
+	return sprintf(buf, "%u\n", acpuclk_get_override_vmin());
+}
+
 /**
  * show_scaling_driver - show the current cpufreq HW/BIOS limitation
  */
@@ -715,6 +799,8 @@ cpufreq_freq_attr_rw(scaling_min_freq);
 cpufreq_freq_attr_rw(scaling_max_freq);
 cpufreq_freq_attr_rw(scaling_governor);
 cpufreq_freq_attr_rw(scaling_setspeed);
+cpufreq_freq_attr_rw(UV_mV_table);
+cpufreq_freq_attr_rw(override_vmin);
 
 static struct attribute *default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -731,6 +817,8 @@ static struct attribute *default_attrs[] = {
 	&scaling_driver.attr,
 	&scaling_available_governors.attr,
 	&scaling_setspeed.attr,
+	&UV_mV_table.attr,
+	&override_vmin.attr,
 	NULL
 };
 
@@ -788,6 +876,9 @@ no_policy:
 	return ret;
 }
 
+extern void msm_rq_stats_enable(int enable);
+
+#if 0
 static ssize_t store(struct kobject *kobj, struct attribute *attr,
 		     const char *buf, size_t count)
 {
@@ -835,6 +926,99 @@ no_policy:
 	mutex_unlock(&per_cpu(cpufreq_remove_mutex, cpu));
 #endif
 	return ret;
+}
+#endif
+
+/* I can't be bothered to deal with the kobj removal hack.  This is safe enough
+ * 99% of the time.
+ */
+static ssize_t store(struct kobject *kobj, struct attribute *attr,
+		     const char *buf, size_t count)
+{
+        struct cpufreq_policy *policy = to_policy(kobj);
+        struct freq_attr *fattr = to_attr(attr);
+        ssize_t ret = count;
+
+        int j, iter = 0, cpu = policy->cpu;
+
+        /* This is a pain, but it's easier to handle shared settings here.  If
+         * we're setting governor, we check flags and toggle mpdecision and
+         * possibly assign to all cores.  If we're setting minimum or maxiumum
+         * frequency, we assign to all cores.
+         *
+         * GOVFLAGS_ALLCPUS: all cpus must use this governor
+         * GOVFLAGS_HOTPLUG: this governor hotplugs and doesn't need mpdecision
+         */
+        if (fattr->store == store_scaling_governor) {
+                char name[16];
+                unsigned int p = 0;
+                struct cpufreq_governor *t = NULL;
+                for (p = 0; p < 16; p++) {
+                        if (buf[p] == 0 || buf[p] == '\n')
+                                break;
+                        name[p] = buf[p];
+                }
+                name[p] = 0;
+                cpufreq_parse_governor(name, &p, &t);
+                if (!t)
+                        return -EINVAL;
+                if (t->flags & BIT(GOVFLAGS_ALLCPUS)) {
+                        iter = 1;
+                } else {
+                        // If cpu0 has ALLCPUS, they all do.
+                        if (per_cpu(cpufreq_cpu_data, 0)->governor->flags &
+                                BIT(GOVFLAGS_ALLCPUS)) {
+                                iter = 1;
+                        }
+                }
+
+                // If cpu0 can't enable cpu1, we need mpdecision
+                if (cpu == 0)
+                        msm_rq_stats_enable(!(t->flags & BIT(GOVFLAGS_HOTPLUG)));
+        } else if (fattr->store == store_scaling_max_freq ||
+                   fattr->store == store_scaling_min_freq) {
+                iter = 1;
+        }
+
+        for_each_possible_cpu(j) {
+                if (!iter && (j != cpu)) continue;
+                /* Getting the policy the usual way here when it doesn't exist
+                 * has unexpected consequences.  Check first.
+                 */
+                if (!per_cpu(cpufreq_cpu_data, j)) {
+                        // store won't work, so adjust saved values
+                        if (fattr->store == store_scaling_governor)
+                                strncpy(per_cpu(cpufreq_policy_save, j).gov,
+                                        buf, CPUFREQ_NAME_LEN);
+                        else if (fattr->store == store_scaling_max_freq)
+                                ret = sscanf(buf, "%u",
+                                        &per_cpu(cpufreq_policy_save, j).max) ?
+                                        ret : -EINVAL;
+                        else if (fattr->store == store_scaling_min_freq)
+                                ret = sscanf(buf, "%u",
+                                        &per_cpu(cpufreq_policy_save, j).min) ?
+                                        ret : -EINVAL;
+                        continue;
+                }
+
+                // We have a policy, so it's safe to grab it.
+                policy = cpufreq_cpu_get_sysfs(j);
+
+                if (lock_policy_rwsem_write(j) < 0)
+                        goto fail;
+
+                if (fattr->store) {
+                        int sr = fattr->store(policy, buf, count);
+                        ret = sr < 0 ? sr : ret;
+                } else
+                        ret = -EIO;
+
+                unlock_policy_rwsem_write(j);
+fail:
+                cpufreq_cpu_put_sysfs(policy);
+        }
+
+        return ret;
 }
 
 static void cpufreq_sysfs_release(struct kobject *kobj)
@@ -1915,6 +2099,40 @@ static unsigned int app_max_freq_limit = MAX_FREQ_LIMIT;
 static unsigned int user_min_freq_limit = MIN_FREQ_LIMIT;
 static unsigned int user_max_freq_limit = MAX_FREQ_LIMIT;
 
+#ifdef CONFIG_INTERACTION_HINTS
+/* Notify governors of touch immediately.
+ * This may block while mutexes are locked.
+ */
+void cpufreq_set_interactivity(int on, int idbit) {
+	unsigned int j;
+	static int pressids = 0;
+	/* Filter events so we don't grab mutexes all over the place */
+	if (on) {
+		int oldids;
+		oldids = pressids;
+		pressids |= 1 << idbit;
+		if (oldids) return;
+	} else {
+		pressids &= ~(1 << idbit);
+		if (pressids) return;
+	}
+	/* Inform all available policies */
+	for_each_online_cpu(j) {
+		struct cpufreq_policy *pol;
+		pol = per_cpu(cpufreq_cpu_data, j);
+		if (pol == NULL) {
+			printk(KERN_DEBUG "policy for cpu %u is null\n", j);
+			continue;
+		}
+		/* Call governor directly, without __cpufreq_governor()'s
+		 * initializing stuff that doesn't apply here.
+		 */
+		pol->governor->governor(pol,
+			pressids ? CPUFREQ_GOV_INTERACT : CPUFREQ_GOV_NOINTERACT);
+	}
+}
+#endif
+
 static int cpufreq_set_limits_off
 	(int cpu, unsigned int min, unsigned int max)
 {
@@ -2277,6 +2495,7 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	cpufreq_queue_priv.wq = create_workqueue("cpufreq_queue");
 	INIT_WORK(&cpufreq_queue_priv.work, cpufreq_set_limit_work);
 #endif
+	INIT_WORK((struct work_struct *) &enable_oc_work, do_enable_oc);
 
 	return 0;
 err_sysdev_unreg:

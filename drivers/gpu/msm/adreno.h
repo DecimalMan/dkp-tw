@@ -10,8 +10,51 @@
  * GNU General Public License for more details.
  *
  */
+
 #ifndef __ADRENO_H
 #define __ADRENO_H
+
+#if !CONFIG_AXXX_REV
+#define __adreno_is_a200 (1)
+#define __adreno_is_a203 (1)
+#define __adreno_is_a205 (1)
+#define __adreno_is_a20x (1)
+#define __adreno_is_a220 (1)
+#define __adreno_is_a225 (1)
+#define __adreno_is_a22x (1)
+#define __adreno_is_a2xx (1)
+#else
+#define adreno_is_a200(dev) \
+	(CONFIG_AXXX_REV == 200)
+#define adreno_is_a203(dev) \
+	(CONFIG_AXXX_REV == 203)
+#define adreno_is_a205(dev) \
+	(CONFIG_AXXX_REV == 205)
+#define adreno_is_a20x(dev) \
+	(CONFIG_AXXX_REV >= 200 && CONFIG_AXXX_REV < 220)
+#define adreno_is_a220(dev) \
+	(CONFIG_AXXX_REV == 220)
+#define adreno_is_a225(dev) \
+	(CONFIG_AXXX_REV == 225)
+#define adreno_is_a22x(dev) \
+	(CONFIG_AXXX_REV >= 220 && CONFIG_AXXX_REV < 300)
+#define adreno_is_a2xx(dev) \
+	(CONFIG_AXXX_REV >= 200 && CONFIG_AXXX_REV < 300)
+#define adreno_is_a3xx(dev) \
+	(CONFIG_AXXX_REV >= 300)
+#define adreno_is_a305(dev) \
+	(CONFIG_AXXX_REV == 305)
+#define adreno_is_a320(dev) \
+	(CONFIG_AXXX_REV == 320)
+#define __adreno_is_a200 adreno_is_a200(0)
+#define __adreno_is_a203 adreno_is_a203(0)
+#define __adreno_is_a205 adreno_is_a205(0)
+#define __adreno_is_a20x adreno_is_a20x(0)
+#define __adreno_is_a220 adreno_is_a220(0)
+#define __adreno_is_a225 adreno_is_a225(0)
+#define __adreno_is_a22x adreno_is_a22x(0)
+#define __adreno_is_a2xx adreno_is_a2xx(0)
+#endif
 
 #include "kgsl_device.h"
 #include "adreno_drawctxt.h"
@@ -119,10 +162,14 @@ struct adreno_recovery_data {
 extern struct adreno_gpudev adreno_a2xx_gpudev;
 
 /* A2XX register sets defined in adreno_a2xx.c */
+#if __adreno_is_a20x
 extern const unsigned int a200_registers[];
-extern const unsigned int a220_registers[];
 extern const unsigned int a200_registers_count;
+#endif
+#if __adreno_is_a22x
+extern const unsigned int a220_registers[];
 extern const unsigned int a220_registers_count;
+#endif
 
 int adreno_idle(struct kgsl_device *device, unsigned int timeout);
 void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
@@ -143,6 +190,7 @@ void *adreno_snapshot(struct kgsl_device *device, void *snapshot, int *remain,
 
 int adreno_dump_and_recover(struct kgsl_device *device);
 
+#if !CONFIG_AXXX_REV
 static inline int adreno_is_a200(struct adreno_device *adreno_dev)
 {
 	return (adreno_dev->gpurev == ADRENO_REV_A200);
@@ -179,6 +227,7 @@ static inline int adreno_is_a2xx(struct adreno_device *adreno_dev)
 {
 	return (adreno_dev->gpurev <= ADRENO_REV_A225);
 }
+#endif
 
 /**
  * adreno_encode_istore_size - encode istore size in CP format

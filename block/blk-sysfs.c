@@ -213,7 +213,6 @@ queue_store_##name(struct request_queue *q, const char *page, size_t count) \
 }
 
 QUEUE_SYSFS_BIT_FNS(nonrot, NONROT, 1);
-QUEUE_SYSFS_BIT_FNS(random, ADD_RANDOM, 0);
 QUEUE_SYSFS_BIT_FNS(iostats, IO_STAT, 0);
 #undef QUEUE_SYSFS_BIT_FNS
 
@@ -374,12 +373,6 @@ static struct queue_sysfs_entry queue_iostats_entry = {
 	.store = queue_store_iostats,
 };
 
-static struct queue_sysfs_entry queue_random_entry = {
-	.attr = {.name = "add_random", .mode = S_IRUGO | S_IWUSR },
-	.show = queue_show_random,
-	.store = queue_store_random,
-};
-
 static struct attribute *default_attrs[] = {
 	&queue_requests_entry.attr,
 	&queue_ra_entry.attr,
@@ -401,7 +394,6 @@ static struct attribute *default_attrs[] = {
 	&queue_nomerges_entry.attr,
 	&queue_rq_affinity_entry.attr,
 	&queue_iostats_entry.attr,
-	&queue_random_entry.attr,
 	NULL,
 };
 

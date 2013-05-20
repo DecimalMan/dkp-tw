@@ -21,8 +21,6 @@
 #include "smd_private.h"
 #include "proc_comm.h"
 
-#define DEBUG
-/* #undef DEBUG */
 #ifdef DEBUG
 #define D(x...) printk(x)
 #else

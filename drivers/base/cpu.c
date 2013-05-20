@@ -45,11 +45,15 @@ static ssize_t __ref store_online(struct sys_device *dev, struct sysdev_attribut
 		ret = cpu_down(cpu->sysdev.id);
 		if (!ret)
 			kobject_uevent(&dev->kobj, KOBJ_OFFLINE);
+		if (!cpu_online(cpu->sysdev.id))
+			ret = 0;
 		break;
 	case '1':
 		ret = cpu_up(cpu->sysdev.id);
 		if (!ret)
 			kobject_uevent(&dev->kobj, KOBJ_ONLINE);
+		if (cpu_online(cpu->sysdev.id))
+			ret = 0;
 		break;
 	default:
 		ret = -EINVAL;

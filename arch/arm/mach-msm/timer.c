@@ -40,8 +40,12 @@
 enum {
 	MSM_TIMER_DEBUG_SYNC = 1U << 0,
 };
+#ifdef DEBUG
 static int msm_timer_debug_mask;
 module_param_named(debug_mask, msm_timer_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+#else
+#define msm_timer_debug_mask (0)
+#endif
 
 #ifdef CONFIG_MSM7X00A_USE_GP_TIMER
 	#define DG_TIMER_RATING 100

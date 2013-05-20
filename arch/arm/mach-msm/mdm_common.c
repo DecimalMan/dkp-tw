@@ -43,7 +43,11 @@
 #define MDM_MODEM_TIMEOUT	6000
 #define MDM_MODEM_DELTA	100
 
+#ifdef CONFIG_DEBUG_FS
 static int mdm_debug_on;
+#else
+#define mdm_debug_on (0)
+#endif
 static struct workqueue_struct *mdm_queue;
 
 #define EXTERNAL_MODEM "external_modem"
@@ -266,6 +270,7 @@ static struct subsys_data mdm_subsystem = {
 	.name = EXTERNAL_MODEM,
 };
 
+#ifdef CONFIG_DEBUG_FS
 static int mdm_debug_on_set(void *data, u64 val)
 {
 	mdm_debug_on = val;
@@ -296,6 +301,7 @@ static int mdm_debugfs_init(void)
 			&mdm_debug_on_fops);
 	return 0;
 }
+#endif
 
 static void mdm_modem_initialize_data(struct platform_device  *pdev,
 				struct mdm_callbacks *p_mdm_cb)
@@ -403,7 +409,9 @@ int mdm_common_create(struct platform_device  *pdev,
 	}
 
 	atomic_notifier_chain_register(&panic_notifier_list, &mdm_panic_blk);
+#ifdef CONFIG_DEBUG_FS
 	mdm_debugfs_init();
+#endif
 
 	/* Register subsystem handlers */
 	ssr_register_subsystem(&mdm_subsystem);

@@ -22,15 +22,27 @@
 
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/input/pmic8xxx-pwrkey.h>
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
 #endif
 #include <linux/string.h>
 #include <linux/delay.h>
 
+#ifdef CONFIG_INTERACTION_HINTS
+#include <linux/cpufreq.h>
+#endif
+
 #define PON_CNTL_1 0x1C
 #define PON_CNTL_PULL_UP BIT(7)
 #define PON_CNTL_TRIG_DELAY_MASK (0x7)
+
+#ifdef CONFIG_INTERACTION_HINTS
+static int current_pressed;
+static struct work_struct interaction_work;
+static void do_interaction(struct work_struct *work) {
+	cpufreq_set_interactivity(current_pressed, INTERACT_ID_OTHER);
+}
+#endif
 
 /**
  * struct pmic8xxx_pwrkey - pmic8xxx pwrkey information
@@ -50,9 +62,14 @@ static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 	pwrkey->powerkey_state = 1;
 	input_report_key(pwrkey->pwr, KEY_POWER, 1);
 	input_sync(pwrkey->pwr);
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 	sec_debug_check_crash_key(KEY_POWER, 1);
 #endif
+#ifdef CONFIG_INTERACTION_HINTS
+	current_pressed = 1;
+	schedule_work(&interaction_work);
+#endif
+
 	return IRQ_HANDLED;
 }
 
@@ -62,9 +79,14 @@ static irqreturn_t pwrkey_release_irq(int irq, void *_pwrkey)
 	pwrkey->powerkey_state = 0;
 	input_report_key(pwrkey->pwr, KEY_POWER, 0);
 	input_sync(pwrkey->pwr);
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 	sec_debug_check_crash_key(KEY_POWER, 0);
 #endif
+#ifdef CONFIG_INTERACTION_HINTS
+	current_pressed = 0;
+	schedule_work(&interaction_work);
+#endif
+
 	return IRQ_HANDLED;
 }
 
@@ -75,6 +97,11 @@ static int pmic8xxx_pwrkey_suspend(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		enable_irq_wake(pwrkey->key_press_irq);
+
+#ifdef CONFIG_INTERACTION_HINTS
+	current_pressed = 0;
+	cpufreq_set_interactivity(0, INTERACT_ID_OTHER);
+#endif
 
 	return 0;
 }
@@ -222,6 +249,10 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 	dev_set_drvdata(sec_powerkey, pwrkey);
 	device_init_wakeup(&pdev->dev, pdata->wakeup);
 
+#ifdef CONFIG_INTERACTION_HINTS
+	INIT_WORK(&interaction_work, do_interaction);
+#endif
+
 	return 0;
 
 free_press_irq:
@@ -250,6 +281,11 @@ static int __devexit pmic8xxx_pwrkey_remove(struct platform_device *pdev)
 	input_unregister_device(pwrkey->pwr);
 	platform_set_drvdata(pdev, NULL);
 	kfree(pwrkey);
+
+#ifdef CONFIG_INTERACTION_HINTS
+	current_pressed = 0;
+	cpufreq_set_interactivity(0, INTERACT_ID_OTHER);
+#endif
 
 	return 0;
 }

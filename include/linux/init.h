@@ -44,6 +44,7 @@
 #define __initdata	__section(.init.data)
 #define __initconst	__section(.init.rodata)
 #define __exitdata	__section(.exit.data)
+#define __exitconstdata __section(.exit.rodata)
 #define __exit_call	__used __section(.exitcall.exit)
 
 /*
@@ -164,6 +165,15 @@ extern int initcall_debug;
 
 #ifndef __ASSEMBLY__
 
+#ifdef CONFIG_LTO
+#define LTO_REFERENCE_INITCALL(x) \
+	; \
+	static __used __exit void *reference_##x(void) \
+	{ return &x; }
+#else
+#define LTO_REFERENCE_INITCALL(x)
+#endif
+
 /* initcalls are now grouped by functionality into separate 
  * subsections. Ordering inside the subsections is determined
  * by link order. 
@@ -176,7 +186,8 @@ extern int initcall_debug;
 
 #define __define_initcall(level,fn,id) \
 	static initcall_t __initcall_##fn##id __used \
-	__attribute__((__section__(".initcall" level ".init"))) = fn
+	__attribute__((__section__(".initcall" level ".init"))) = fn \
+	LTO_REFERENCE_INITCALL(__initcall_##fn##id)
 
 /*
  * Early initcalls run before initializing SMP.

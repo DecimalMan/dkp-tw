@@ -160,7 +160,6 @@ void mdp4_dtv_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe)
 	*pp = *pipe;	/* clone it */
 	vp->update_cnt++;
 	mutex_unlock(&vctrl->update_lock);
-	mdp4_stat.overlay_play[pipe->mixer_num]++;
 }
 
 static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe);
@@ -227,7 +226,6 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 		mb();
 		pipe->blt_ov_koff++;
 		/* kickoff overlay1 engine */
-		mdp4_stat.kickoff_ov1++;
 		outpdw(MDP_BASE + 0x0008, 0);
 	} else {
 		/* schedule second phase update  at dmap */
@@ -235,7 +233,6 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 		vsync_irq_enable(INTR_DMA_E_DONE, MDP_DMA_E_TERM);
 	}
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
-	mdp4_stat.overlay_commit[pipe->mixer_num]++;
 
 	if (wait)
 		mdp4_dtv_wait4dmae(0);
@@ -294,7 +291,6 @@ void mdp4_dtv_wait4vsync(int cndx, long long *vtime)
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
 
 	wait_for_completion(&vctrl->vsync_comp);
-	mdp4_stat.wait4vsync1++;
 
 	*vtime = ktime_to_ns(vctrl->vsync_time);
 }
@@ -899,7 +895,6 @@ void mdp4_dmae_done_dtv(void)
 			/* Prefill one frame */
 			vsync_irq_enable(INTR_OVERLAY1_DONE, MDP_OVERLAY1_TERM);
 			/* kickoff overlay1 engine */
-			mdp4_stat.kickoff_ov1++;
 			outpdw(MDP_BASE + 0x0008, 0);
 		}
 		vctrl->blt_change = 0;
@@ -999,7 +994,6 @@ static void mdp4_dtv_do_blt(struct msm_fb_data_type *mfd, int enable)
 		pipe->blt_dmap_done = 0;
 		pipe->blt_ov_koff = 0;
 		pipe->blt_ov_done = 0;
-		mdp4_stat.blt_dtv++;
 		vctrl->blt_change++;
 	} else if (enable == 0 && pipe->ov_blt_addr) {
 		pipe->ov_blt_addr = 0;

@@ -13,6 +13,9 @@
 #ifndef __KGSL_MMU_H
 #define __KGSL_MMU_H
 
+/* Compile-time hints */
+#define KGSL_FORCE_MMU KGSL_MMU_TYPE_GPU
+
 #define KGSL_MMU_ALIGN_SHIFT    13
 #define KGSL_MMU_ALIGN_MASK     (~((1 << KGSL_MMU_ALIGN_SHIFT) - 1))
 
@@ -179,12 +182,21 @@ int kgsl_mmu_pt_get_flags(struct kgsl_pagetable *pt,
 			enum kgsl_deviceid id);
 void kgsl_mmu_ptpool_destroy(void *ptpool);
 void *kgsl_mmu_ptpool_init(int entries);
+#ifdef KGSL_FORCE_MMU
+#define kgsl_mmu_enabled() \
+	(KGSL_FORCE_MMU == KGSL_MMU_TYPE_NONE ? 0 : 1)
+#define kgsl_mmu_set_mmutype(t) \
+	do { } while (0)
+#define kgsl_mmu_get_mmutype(d) \
+	(KGSL_FORCE_MMU)
+#else
 int kgsl_mmu_enabled(void);
+void kgsl_mmu_set_mmutype(char *mmutype);
+enum kgsl_mmutype kgsl_mmu_get_mmutype(void);
+#endif
 int kgsl_mmu_pt_equal(struct kgsl_pagetable *pt,
 			unsigned int pt_base);
-void kgsl_mmu_set_mmutype(char *mmutype);
 unsigned int kgsl_mmu_get_current_ptbase(struct kgsl_device *device);
-enum kgsl_mmutype kgsl_mmu_get_mmutype(void);
 unsigned int kgsl_mmu_get_ptsize(void);
 
 static inline int kgsl_mmu_gpuaddr_in_range(unsigned int gpuaddr)

@@ -49,7 +49,11 @@
 #define IFLINE_UP			1
 #define IFLINE_DOWN			0
 
+#ifdef CONFIG_DEBUG_FS
 static int mdm_debug_on;
+#else
+#define mdm_debug_on (0)
+#endif
 static struct mdm_callbacks mdm_cb;
 
 #define MDM_DBG(...)	do { if (mdm_debug_on) \
@@ -113,7 +117,9 @@ static void normal_boot_done(struct mdm_modem_drv *mdm_drv)
 
 static void debug_state_changed(int value)
 {
+#ifdef CONFIG_DEBUG_FS
 	mdm_debug_on = value;
+#endif
 }
 
 static void mdm_status_changed(int value)

@@ -93,12 +93,14 @@ static u32 msm_fb_pseudo_palette[16] = {
 
 static struct ion_client *iclient;
 
+#ifdef MSM_FB_ENABLE_DBGFS
 u32 msm_fb_debug_enabled;
 /* Setting msm_fb_msg_level to 8 prints out ALL messages */
 u32 msm_fb_msg_level = 7;
 
 /* Setting mddi_msg_level to 8 prints out ALL messages */
 u32 mddi_msg_level = 5;
+#endif
 
 extern int32 mdp_block_power_cnt[MDP_MAX_BLOCK];
 extern unsigned long mdp_timer_duration;
@@ -123,14 +125,8 @@ static int mdp_bl_scale_config(struct msm_fb_data_type *mfd,
 						struct mdp_bl_scale_data *data);
 static void msm_fb_scale_bl(__u32 *bl_lvl);
 
-#ifdef MSM_FB_ENABLE_DBGFS
-
-#define MSM_FB_MAX_DBGFS 1024
 #define MAX_BACKLIGHT_BRIGHTNESS 255
 
-int msm_fb_debugfs_file_index;
-struct dentry *msm_fb_debugfs_root;
-struct dentry *msm_fb_debugfs_file[MSM_FB_MAX_DBGFS];
 static int bl_scale, bl_min_lvl;
 
 DEFINE_MUTEX(msm_fb_notify_update_sem);
@@ -141,6 +137,14 @@ void msmfb_no_update_notify_timer_cb(unsigned long data)
 		pr_err("%s mfd NULL\n", __func__);
 	complete(&mfd->msmfb_no_update_notify);
 }
+
+#ifdef MSM_FB_ENABLE_DBGFS
+
+#define MSM_FB_MAX_DBGFS 1024
+
+int msm_fb_debugfs_file_index;
+struct dentry *msm_fb_debugfs_root;
+struct dentry *msm_fb_debugfs_file[MSM_FB_MAX_DBGFS];
 
 struct dentry *msm_fb_get_debugfs_root(void)
 {

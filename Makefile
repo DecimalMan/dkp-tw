@@ -330,9 +330,14 @@ include $(srctree)/scripts/Kbuild.include
 
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
-REAL_CC		= $(CROSS_COMPILE)gcc
+LDFINAL		= $(LD)
+CC		= $(CROSS_COMPILE)gcc
 CPP		= $(CC) -E
+ifdef CONFIG_LTO_SLIM
+AR		= $(CROSS_COMPILE)gcc-ar
+else
 AR		= $(CROSS_COMPILE)ar
+endif
 NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
@@ -344,10 +349,6 @@ DEPMOD		= /sbin/depmod
 KALLSYMS	= scripts/kallsyms
 PERL		= perl
 CHECK		= sparse
-
-# Use the wrapper for the compiler.  This wrapper scans for new
-# warnings and causes the build to stop upon encountering them.
-CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
@@ -373,6 +374,8 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
+		   -Wno-sizeof-pointer-memaccess \
+		   $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD) \
 		   -D_$(TARGET_PRODUCT)_
 
 KBUILD_AFLAGS_KERNEL :=
@@ -388,7 +391,7 @@ KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(S
 
 export VERSION PATCHLEVEL SUBLEVEL KERNELRELEASE KERNELVERSION
 export ARCH SRCARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC
-export CPP AR NM STRIP OBJCOPY OBJDUMP
+export CPP AR NM STRIP OBJCOPY OBJDUMP LDFINAL
 export MAKE AWK GENKSYMS INSTALLKERNEL PERL UTS_MACHINE
 export HOSTCXX HOSTCXXFLAGS LDFLAGS_MODULE CHECK CHECKFLAGS
 
@@ -566,9 +569,20 @@ all: vmlinux
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os
+CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a
+CFLAGS_GR	= -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
+		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las
+CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O3
+CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a \
+		  -funsafe-math-optimizations -funroll-loops -mvectorize-with-neon-quad \
+		  -ftree-loop-im -fivopts -funswitch-loops -fgcse-sm -fgcse-las
+CFLAGS_GR	= -fgraphite-identity -floop-block -ftree-loop-linear \
+		  -floop-strip-mine -ftree-loop-distribution
+CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
 endif
+KBUILD_CFLAGS	+= $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD)
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
@@ -645,6 +659,8 @@ KBUILD_ARFLAGS := $(call ar-option,D)
 ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC)), y)
 	KBUILD_CFLAGS += -DCC_HAVE_ASM_GOTO
 endif
+
+include ${srctree}/scripts/Makefile.lto
 
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
 # But warn user when we do so
@@ -729,7 +745,7 @@ init-y		:= $(patsubst %/, %/built-in.o, $(init-y))
 core-y		:= $(patsubst %/, %/built-in.o, $(core-y))
 drivers-y	:= $(patsubst %/, %/built-in.o, $(drivers-y))
 net-y		:= $(patsubst %/, %/built-in.o, $(net-y))
-libs-y1		:= $(patsubst %/, %/lib.a, $(libs-y))
+libs-y1		:= $(patsubst %/, %/lib-statics.o, $(libs-y))
 libs-y2		:= $(patsubst %/, %/built-in.o, $(libs-y))
 libs-y		:= $(libs-y1) $(libs-y2)
 
@@ -768,8 +784,8 @@ export KBUILD_VMLINUX_OBJS := $(vmlinux-all)
 
 # Rule to link vmlinux - also used during CONFIG_KALLSYMS
 # May be overridden by arch/$(ARCH)/Makefile
-quiet_cmd_vmlinux__ ?= LD      $@
-      cmd_vmlinux__ ?= $(LD) $(LDFLAGS) $(LDFLAGS_vmlinux) -o $@ \
+quiet_cmd_vmlinux__ ?= LDFINAL      $@
+      cmd_vmlinux__ ?= $(LDFINAL) $(LDFLAGS) $(LDFLAGS_vmlinux) -o $@ \
       -T $(vmlinux-lds) $(vmlinux-init)                          \
       --start-group $(vmlinux-main) --end-group                  \
       $(filter-out $(vmlinux-lds) $(vmlinux-init) $(vmlinux-main) vmlinux.o FORCE ,$^)
@@ -797,9 +813,9 @@ quiet_cmd_sysmap = SYSMAP
 # First command is ':' to allow us to use + in front of the rule
 define rule_vmlinux__
 	:
-	$(if $(CONFIG_KALLSYMS),,+$(call cmd,vmlinux_version))
+	+$(if $(CONFIG_KALLSYMS),,+$(call cmd,vmlinux_version))
 
-	$(call cmd,vmlinux__)
+	+$(call cmd,vmlinux__)
 	$(Q)echo 'cmd_$@ := $(cmd_vmlinux__)' > $(@D)/.$(@F).cmd
 
 	$(Q)$(if $($(quiet)cmd_sysmap),                                      \
@@ -923,8 +939,8 @@ endif
 ifdef CONFIG_BUILD_DOCSRC
 	$(Q)$(MAKE) $(build)=Documentation
 endif
-	$(call vmlinux-modpost)
-	$(call if_changed_rule,vmlinux__)
+	+$(call vmlinux-modpost)
+	+$(call if_changed_rule,vmlinux__)
 	$(Q)rm -f .old_version
 
 # build vmlinux.o first to catch section mismatch errors early

@@ -85,12 +85,11 @@ static void check_and_wakeup_reader(struct smd_pkt_dev *smd_pkt_devp);
 static void check_and_wakeup_writer(struct smd_pkt_dev *smd_pkt_devp);
 static uint32_t is_modem_smsm_inited(void);
 
+#ifdef DEBUG
 static int msm_smd_pkt_debug_mask;
 module_param_named(debug_mask, msm_smd_pkt_debug_mask,
 		int, S_IRUGO | S_IWUSR | S_IWGRP);
-#define DEBUG
 
-#ifdef DEBUG
 #define D_DUMP_BUFFER(prestr, cnt, buf) \
 do { \
 	if (msm_smd_pkt_debug_mask) \
@@ -105,6 +104,7 @@ do { \
 #ifdef DEBUG
 #define D(x...) if (msm_smd_pkt_debug_mask) printk(x)
 #else
+#define msm_smd_pkt_debug_mask (0)
 #define D(x...) do {} while (0)
 #endif
 

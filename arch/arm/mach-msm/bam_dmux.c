@@ -15,7 +15,8 @@
  *  BAM DMUX module.
  */
 
-#define DEBUG
+//#define DEBUG
+//#define BOGUS
 
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -134,8 +135,10 @@ struct tx_pkt_info {
 	uint32_t len;
 	struct work_struct work;
 	struct list_head list_node;
+#ifdef BOGUS
 	unsigned ts_sec;
 	unsigned long ts_nsec;
+#endif
 };
 
 struct rx_pkt_info {
@@ -263,11 +266,13 @@ static int in_global_reset;
 #define LOG_MESSAGE_MAX_SIZE 80
 struct kfifo bam_dmux_state_log;
 static uint32_t bam_dmux_state_logging_disabled;
+#ifdef BOGUS
 static DEFINE_SPINLOCK(bam_dmux_logging_spinlock);
+#endif
 static int bam_dmux_uplink_vote;
 static int bam_dmux_power_state;
 
-
+#ifdef BOGUS
 #define DMUX_LOG_KERR(fmt...) \
 do { \
 	bam_dmux_log(fmt); \
@@ -392,6 +397,10 @@ static inline void verify_tx_queue_is_empty(const char *func)
 	}
 	spin_unlock_irqrestore(&bam_tx_pool_spinlock, flags);
 }
+#else
+#define DMUX_LOG_KERR(fmt...) do { } while (0)
+#define bam_dmux_log(fmt...) do { } while (0)
+#endif
 
 static void queue_rx(void)
 {
@@ -650,7 +659,9 @@ static int bam_mux_write_cmd(void *data, uint32_t len)
 	pkt->len = len;
 	pkt->dma_address = dma_address;
 	pkt->is_cmd = 1;
+#ifdef BOGUS
 	set_tx_timestamp(pkt);
+#endif
 	INIT_WORK(&pkt->work, bam_mux_write_done);
 	spin_lock_irqsave(&bam_tx_pool_spinlock, flags);
 	list_add_tail(&pkt->list_node, &bam_tx_pool);
@@ -691,6 +702,7 @@ static void bam_mux_write_done(struct work_struct *work)
 	info_expected = list_first_entry(&bam_tx_pool,
 			struct tx_pkt_info, list_node);
 	if (unlikely(info != info_expected)) {
+#ifdef BOGUS
 		struct tx_pkt_info *errant_pkt;
 
 		DMUX_LOG_KERR("%s: bam_tx_pool mismatch .next=%p,"
@@ -705,6 +717,7 @@ static void bam_mux_write_done(struct work_struct *work)
 			errant_pkt->ts_nsec);
 
 		}
+#endif
 		spin_unlock_irqrestore(&bam_tx_pool_spinlock, flags);
 		BUG();
 	}
@@ -822,7 +835,9 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 	pkt->skb = skb;
 	pkt->dma_address = dma_address;
 	pkt->is_cmd = 0;
+#ifdef BOGUS
 	set_tx_timestamp(pkt);
+#endif
 	INIT_WORK(&pkt->work, bam_mux_write_done);
 	spin_lock_irqsave(&bam_tx_pool_spinlock, flags);
 	list_add_tail(&pkt->list_node, &bam_tx_pool);
@@ -1470,7 +1485,9 @@ static void power_vote(int vote)
 static inline void ul_powerdown(void)
 {
 	bam_dmux_log("%s: powerdown\n", __func__);
+#ifdef BOGUS
 	verify_tx_queue_is_empty(__func__);
+#endif
 
 	if (a2_pc_disabled) {
 		wait_for_dfab = 1;
@@ -1548,6 +1565,7 @@ static void ul_timeout(struct work_struct *work)
 		if (!ul_packet_written) {
 			spin_lock(&bam_tx_pool_spinlock);
 			if (!list_empty(&bam_tx_pool)) {
+#ifdef BOGUS
 				struct tx_pkt_info *info;
 
 				info = list_first_entry(&bam_tx_pool,
@@ -1555,6 +1573,7 @@ static void ul_timeout(struct work_struct *work)
 				DMUX_LOG_KERR("%s: UL delayed ts=%u.%09lu\n",
 					__func__, info->ts_sec, info->ts_nsec);
 				DBG_INC_TX_STALL_CNT();
+#endif
 				ul_packet_written = 1;
 			}
 			spin_unlock(&bam_tx_pool_spinlock);
@@ -1747,7 +1766,9 @@ static void disconnect_to_bam(void)
 	if (disconnect_ack)
 		toggle_apps_ack();
 #endif
+#ifdef BOGUS
 	verify_tx_queue_is_empty(__func__);
+#endif
 }
 
 static void vote_dfab(void)

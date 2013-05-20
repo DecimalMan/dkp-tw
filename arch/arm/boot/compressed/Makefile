@@ -5,6 +5,7 @@
 #
 
 OBJS		=
+plus_sec	:= $(call as-instr,.arch_extension sec,+sec)
 
 # Ensure that mmcif loader code appears early in the image
 # to minimise that number of bocks that have to be read in
@@ -16,13 +17,24 @@ endif
 endif
 
 AFLAGS_head.o += -DTEXT_OFFSET=$(TEXT_OFFSET)
+AFLAGS_head.o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_misc.o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_decompress.o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_lib1funcs.o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_ashldi3.o += -Wa,-march=armv7-a$(plus_sec)
+
+# Make sure we can use these during final link
+CFLAGS_misc.o += -ffat-lto-objects
+CFLAGS_decompress.o += -ffat-lto-objects
+CFLAGS_string.o += -ffat-lto-objects
+
 HEAD	= head.o
 OBJS	+= misc.o decompress.o
 FONTC	= $(srctree)/drivers/video/console/font_acorn_8x8.c
 
 # string library code (-Os is enforced to keep it much smaller)
 OBJS		+= string.o
-CFLAGS_string.o	:= -Os
+CFLAGS_string.o	+= -Os
 
 #
 # Architecture dependencies
@@ -86,6 +98,7 @@ SEDFLAGS	= s/TEXT_START/$(ZTEXTADDR)/;s/BSS_START/$(ZBSSADDR)/
 suffix_$(CONFIG_KERNEL_GZIP) = gzip
 suffix_$(CONFIG_KERNEL_LZO)  = lzo
 suffix_$(CONFIG_KERNEL_LZMA) = lzma
+AFLAGS_piggy.$(suffix_y).o += -Wa,-march=armv7-a$(plus_sec)
 
 # Borrowed libfdt files for the ATAG compatibility mode
 

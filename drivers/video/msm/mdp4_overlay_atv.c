@@ -206,6 +206,5 @@ void mdp4_atv_overlay(struct msm_fb_data_type *mfd)
 	wait_for_completion_killable(&atv_pipe->comp);
 	mdp_disable_irq(MDP_OVERLAY1_TERM);
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
-	mdp4_stat.kickoff_atv++;
 	mutex_unlock(&mfd->dma->ov_mutex);
 }

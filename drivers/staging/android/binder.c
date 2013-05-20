@@ -16,6 +16,8 @@
  *
  */
 
+//#define DEBUG
+
 #include <asm/cacheflush.h>
 #include <linux/fdtable.h>
 #include <linux/file.h>
@@ -45,13 +47,16 @@ static HLIST_HEAD(binder_procs);
 static HLIST_HEAD(binder_deferred_list);
 static HLIST_HEAD(binder_dead_nodes);
 
+#ifdef DEBUG
 static struct dentry *binder_debugfs_dir_entry_root;
 static struct dentry *binder_debugfs_dir_entry_proc;
+#endif
 static struct binder_node *binder_context_mgr_node;
 static uid_t binder_context_mgr_uid = -1;
 static int binder_last_id;
 static struct workqueue_struct *binder_deferred_workqueue;
 
+#ifdef DEBUG
 #define BINDER_DEBUG_ENTRY(name) \
 static int binder_##name##_open(struct inode *inode, struct file *file) \
 { \
@@ -68,6 +73,7 @@ static const struct file_operations binder_##name##_fops = { \
 
 static int binder_proc_show(struct seq_file *m, void *unused);
 BINDER_DEBUG_ENTRY(proc);
+#endif
 
 /* This is only defined in include/asm-arm/sizes.h */
 #ifndef SZ_1K
@@ -101,8 +107,12 @@ enum {
 	BINDER_DEBUG_BUFFER_ALLOC_ASYNC     = 1U << 15,
 	BINDER_DEBUG_TOP_ERRORS             = 1U << 16,
 };
+#ifdef DEBUG
 static uint32_t binder_debug_mask;
 module_param_named(debug_mask, binder_debug_mask, uint, S_IWUSR | S_IRUGO);
+#else
+#define binder_debug_mask (0)
+#endif
 
 static int binder_debug_no_lock;
 module_param_named(proc_no_lock, binder_debug_no_lock, bool, S_IWUSR | S_IRUGO);
@@ -2971,12 +2981,14 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	filp->private_data = proc;
 	mutex_unlock(&binder_lock);
 
+#ifdef DEBUG
 	if (binder_debugfs_dir_entry_proc) {
 		char strbuf[11];
 		snprintf(strbuf, sizeof(strbuf), "%u", proc->pid);
 		proc->debugfs_entry = debugfs_create_file(strbuf, S_IRUGO,
 			binder_debugfs_dir_entry_proc, proc, &binder_proc_fops);
 	}
+#endif
 
 	return 0;
 }
@@ -3197,6 +3209,7 @@ binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer)
 	mutex_unlock(&binder_deferred_lock);
 }
 
+#ifdef DEBUG
 static void print_binder_transaction(struct seq_file *m, const char *prefix,
 				     struct binder_transaction *t)
 {
@@ -3609,6 +3622,7 @@ static int binder_transaction_log_show(struct seq_file *m, void *unused)
 		print_binder_transaction_log_entry(m, &log->entry[i]);
 	return 0;
 }
+#endif
 
 static const struct file_operations binder_fops = {
 	.owner = THIS_MODULE,
@@ -3626,10 +3640,12 @@ static struct miscdevice binder_miscdev = {
 	.fops = &binder_fops
 };
 
+#ifdef DEBUG
 BINDER_DEBUG_ENTRY(state);
 BINDER_DEBUG_ENTRY(stats);
 BINDER_DEBUG_ENTRY(transactions);
 BINDER_DEBUG_ENTRY(transaction_log);
+#endif
 
 static int __init binder_init(void)
 {
@@ -3639,11 +3655,12 @@ static int __init binder_init(void)
 	if (!binder_deferred_workqueue)
 		return -ENOMEM;
 
+	ret = misc_register(&binder_miscdev);
+#ifdef DEBUG
 	binder_debugfs_dir_entry_root = debugfs_create_dir("binder", NULL);
 	if (binder_debugfs_dir_entry_root)
 		binder_debugfs_dir_entry_proc = debugfs_create_dir("proc",
 						 binder_debugfs_dir_entry_root);
-	ret = misc_register(&binder_miscdev);
 	if (binder_debugfs_dir_entry_root) {
 		debugfs_create_file("state",
 				    S_IRUGO,
@@ -3671,6 +3688,7 @@ static int __init binder_init(void)
 				    &binder_transaction_log_failed,
 				    &binder_transaction_log_fops);
 	}
+#endif
 	return ret;
 }
 

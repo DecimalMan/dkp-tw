@@ -62,7 +62,8 @@
 #endif
 
 /* Set to 3 to get tracing. */
-#define RT6_DEBUG 2
+//#define RT6_DEBUG 2
+#define RT6_DEBUG 0
 
 #if RT6_DEBUG >= 3
 #define RDBG(x) printk x

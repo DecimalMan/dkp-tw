@@ -51,7 +51,7 @@
 #include "timer.h"
 #include "qdss.h"
 #include "pm-boot.h"
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
 #endif
 
@@ -72,10 +72,14 @@ enum {
 	MSM_PM_DEBUG_HOTPLUG = BIT(8),
 };
 
+#ifdef DEBUG
 static int msm_pm_debug_mask = 1;
 module_param_named(
 	debug_mask, msm_pm_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
 );
+#else
+#define msm_pm_debug_mask (0)
+#endif
 
 
 /******************************************************************************
@@ -109,6 +113,7 @@ static char *msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_NR] = {
 	[MSM_PM_MODE_ATTR_IDLE] = "idle_enabled",
 };
 
+#ifdef SYSFS
 struct msm_pm_kobj_attribute {
 	unsigned int cpu;
 	struct kobj_attribute ka;
@@ -342,6 +347,7 @@ static int __init msm_pm_mode_sysfs_add(void)
 mode_sysfs_add_exit:
 	return ret;
 }
+#endif
 
 /******************************************************************************
  * CONFIG_MSM_IDLE_STATS
@@ -818,8 +824,12 @@ int msm_pm_idle_prepare(struct cpuidle_device *dev)
 		mode = (enum msm_pm_sleep_mode) state->driver_data;
 		idx = MSM_PM_MODE(dev->cpu, mode);
 
+#ifdef SYSFS
 		allow = msm_pm_modes[idx].idle_enabled &&
 				msm_pm_modes[idx].idle_supported;
+#else
+		allow = msm_pm_modes[idx].idle_supported;
+#endif
 
 		switch (mode) {
 		case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
@@ -1007,7 +1017,11 @@ void msm_pm_cpu_enter_lowpower(unsigned int cpu)
 		struct msm_pm_platform_data *mode;
 
 		mode = &msm_pm_modes[MSM_PM_MODE(cpu, i)];
+#ifdef SYSFS
 		allow[i] = mode->suspend_supported && mode->suspend_enabled;
+#else
+		allow[i] = mode->suspend_supported;
+#endif
 	}
 
 	if (MSM_PM_DEBUG_HOTPLUG & msm_pm_debug_mask)
@@ -1082,7 +1096,11 @@ static int msm_pm_enter(suspend_state_t state)
 		struct msm_pm_platform_data *mode;
 
 		mode = &msm_pm_modes[MSM_PM_MODE(0, i)];
+#ifdef SYSFS
 		allow[i] = mode->suspend_supported && mode->suspend_enabled;
+#else
+		allow[i] = mode->suspend_supported;
+#endif
 	}
 
 	if (allow[MSM_PM_SLEEP_MODE_POWER_COLLAPSE]) {
@@ -1262,7 +1280,9 @@ static int __init msm_pm_init(void)
 	}
 #endif  /* CONFIG_MSM_IDLE_STATS */
 
+#ifdef SYSFS
 	msm_pm_mode_sysfs_add();
+#endif
 	msm_spm_allow_x_cpu_set_vdd(false);
 
 	suspend_set_ops(&msm_pm_ops);

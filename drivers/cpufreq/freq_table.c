@@ -14,6 +14,8 @@
 #include <linux/init.h>
 #include <linux/cpufreq.h>
 
+struct cpufreq_frequency_table *acpuclk_get_full_freq_table(unsigned int cpu);
+
 /*********************************************************************
  *                     FREQUENCY TABLE HELPERS                       *
  *********************************************************************/
@@ -182,10 +184,8 @@ static ssize_t show_available_freqs(struct cpufreq_policy *policy, char *buf)
 	ssize_t count = 0;
 	struct cpufreq_frequency_table *table;
 
-	if (!per_cpu(cpufreq_show_table, cpu))
-		return -ENODEV;
-
-	table = per_cpu(cpufreq_show_table, cpu);
+	table = acpuclk_get_full_freq_table(cpu);
+	if (!table) return -ENODEV;
 
 	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
 		if (table[i].frequency == CPUFREQ_ENTRY_INVALID)
@@ -193,6 +193,7 @@ static ssize_t show_available_freqs(struct cpufreq_policy *policy, char *buf)
 		count += sprintf(&buf[count], "%d ", table[i].frequency);
 	}
 	count += sprintf(&buf[count], "\n");
+	kfree(table);
 
 	return count;
 

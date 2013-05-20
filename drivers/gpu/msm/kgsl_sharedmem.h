@@ -65,12 +65,6 @@ int kgsl_sharedmem_set(const struct kgsl_memdesc *memdesc,
 
 void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op);
 
-void kgsl_process_init_sysfs(struct kgsl_process_private *private);
-void kgsl_process_uninit_sysfs(struct kgsl_process_private *private);
-
-int kgsl_sharedmem_init_sysfs(void);
-void kgsl_sharedmem_uninit_sysfs(void);
-
 static inline unsigned int kgsl_get_sg_pa(struct scatterlist *sg)
 {
 	/*

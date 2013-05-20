@@ -971,6 +971,10 @@ asmlinkage int printk(const char *fmt, ...)
 	uncached_logk_pc(LOGK_LOGBUF, caller, (void *)log_end);
 #endif
 
+	/* Drop out early if possible */
+	if (!((fmt[2] - '0') & ~7) && ((fmt[2] - '0') > console_loglevel))
+		return 0;
+
 #ifdef CONFIG_KGDB_KDB
 	if (unlikely(kdb_trap_printk)) {
 		va_start(args, fmt);

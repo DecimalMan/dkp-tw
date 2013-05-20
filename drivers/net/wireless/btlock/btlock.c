@@ -29,7 +29,8 @@ MODULE_LICENSE("GPL");
 #define BTLOCK_NAME      "btlock"
 #define BTLOCK_MINOR     224
 
-#define PR(msg, ...) printk(KERN_DEBUG "#### %s " msg, current->comm, ##__VA_ARGS__)
+//#define PR(msg, ...) printk(KERN_DEBUG "#### %s " msg, current->comm, ##__VA_ARGS__)
+#define PR(x...)
 
 struct btlock {
 	int lock;

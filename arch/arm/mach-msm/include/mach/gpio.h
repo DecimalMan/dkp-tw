@@ -122,7 +122,7 @@ int msm_gpios_disable(const struct msm_gpio *table, int size);
  * msm_gpios_show_resume_irq() - show the interrupts that could have triggered
  * resume
  */
-void msm_gpio_show_resume_irq(void);
+//void msm_gpio_show_resume_irq(void);
 
 /* GPIO TLMM (Top Level Multiplexing) Definitions */
 

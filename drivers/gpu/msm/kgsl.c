@@ -158,8 +158,10 @@ kgsl_mem_entry_destroy(struct kref *kref)
 
 	entry->priv->stats[entry->memtype].cur -= entry->memdesc.size;
 
+#ifdef KGSL_STATS
 	if (entry->memtype != KGSL_MEM_ENTRY_KERNEL)
 		kgsl_driver.stats.mapped -= entry->memdesc.size;
+#endif
 
 	/*
 	 * Ion takes care of freeing the sglist for us (how nice </sarcasm>) so
@@ -591,7 +593,9 @@ kgsl_get_process_private(struct kgsl_device_private *cur_dev_priv)
 
 	list_add(&private->list, &kgsl_driver.process_list);
 
+#ifdef KGSL_STATS
 	kgsl_process_init_sysfs(private);
+#endif
 
 out:
 	mutex_unlock(&kgsl_driver.process_mutex);
@@ -613,7 +617,9 @@ kgsl_put_process_private(struct kgsl_device *device,
 	if (--private->refcnt)
 		goto unlock;
 
+#ifdef KGSL_STATS
 	kgsl_process_uninit_sysfs(private);
+#endif
 
 	list_del(&private->list);
 
@@ -2387,7 +2393,9 @@ static void kgsl_core_exit(void)
 	kgsl_drm_exit();
 	kgsl_cffdump_destroy();
 	kgsl_core_debugfs_close();
+#ifdef KGSL_STATS
 	kgsl_sharedmem_uninit_sysfs();
+#endif
 }
 
 static int __init kgsl_core_init(void)
@@ -2443,7 +2451,9 @@ static int __init kgsl_core_init(void)
 
 	kgsl_core_debugfs_init();
 
+#ifdef KGSL_STATS
 	kgsl_sharedmem_init_sysfs();
+#endif
 	kgsl_cffdump_init();
 
 	INIT_LIST_HEAD(&kgsl_driver.process_list);

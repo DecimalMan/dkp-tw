@@ -26,6 +26,7 @@
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/rq_stats.h>
+#include <linux/delay.h>
 
 #ifdef CONFIG_SEC_DVFS_DUAL
 #include <linux/cpufreq.h>
@@ -37,6 +38,53 @@
 #define DEFAULT_RQ_POLL_JIFFIES 1
 #define DEFAULT_DEF_TIMER_JIFFIES 5
 
+int mpdecision_available(void) {
+        struct task_struct *tsk;
+        for_each_process(tsk) {
+                if (strstr(tsk->comm, "mpdecision")) {
+                        return 1;
+                }
+        }
+        return 0;
+}
+
+static void mpdecision_enable(int enable) {
+        if (enable != rq_info.init) {
+                if (enable) {
+                        cpu_up(1);
+                        rq_info.rq_poll_total_jiffies = 0;
+                        rq_info.rq_poll_last_jiffy = jiffies;
+                        rq_info.rq_avg = 0;
+                }
+                printk(KERN_DEBUG "rq-stats: rq_info.init = %i\n", enable);
+                rq_info.init = enable;
+        }
+}
+
+extern void hotplug_disable(bool flag);
+static void rq_hotplug_enable(int enable) {
+        if (mpdecision_available()) {
+                mpdecision_enable(enable);
+                hotplug_disable(1);
+        } else {
+                mpdecision_enable(0);
+                hotplug_disable(!enable);
+        }
+}
+
+static int hotplug_enable = 1;
+static struct delayed_work mpd_work;
+static void do_hotplug_enable(struct work_struct *work) {
+        rq_hotplug_enable(hotplug_enable);
+}
+
+// Give apps a second to start/stop mpdecision after setting governor
+void msm_rq_stats_enable(int enable) {
+        hotplug_enable = enable;
+        cancel_delayed_work_sync(&mpd_work);
+        schedule_delayed_work(&mpd_work, HZ);
+}
+
 static void def_work_fn(struct work_struct *work)
 {
 	int64_t diff;
@@ -47,6 +95,18 @@ static void def_work_fn(struct work_struct *work)
 
 	/* Notify polling threads on change of value */
 	sysfs_notify(rq_info.kobj, NULL, "def_timer_ms");
+
+	/* If we're in this position, it means that mpdecision WAS running but
+	 * isn't anymore.  We still need non-governor hotplug, so call
+	 * rq_hotplug_enable to migrate to auto-hotplug.
+	 */
+	/* XXX this sucks.  On AOSP, we have hotplug_disabled to notify us that
+	 * mpdecision is suspended.
+	 */
+	if (unlikely(rq_info.rq_poll_total_jiffies > 5 * HZ)) {
+		printk(KERN_DEBUG "rq-stats: where's mpdecision? migrating to auto-hotplug\n");
+		rq_hotplug_enable(1);
+	}
 }
 
 #ifdef CONFIG_SEC_DVFS_DUAL
@@ -145,6 +205,14 @@ static ssize_t show_run_queue_avg(struct kobject *kobj,
 {
 	unsigned int val = 0;
 	unsigned long flags = 0;
+
+        /* Fingers crossed, we only get here when mpdecision initially
+         * restarts, rather than at random while using hotplugging governors.
+         */
+        if (unlikely(!rq_info.init)) {
+                printk(KERN_DEBUG "rq-stats: here comes mpdecision! stopping auto-hotplug\n");
+                rq_hotplug_enable(1);
+        }
 
 	spin_lock_irqsave(&rq_lock, flags);
 	/* rq avg currently available only on one core */
@@ -312,6 +380,8 @@ static int __init msm_rq_stats_init(void)
 	is_dual_locked = 0;
 #endif
 	ret = init_rq_attribs();
+
+	INIT_DELAYED_WORK_DEFERRABLE(&mpd_work, do_hotplug_enable);
 
 	rq_info.init = 1;
 	return ret;

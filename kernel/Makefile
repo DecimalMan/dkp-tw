@@ -10,7 +10,7 @@ obj-y     = sched.o fork.o exec_domain.o panic.o printk.o \
 	    kthread.o wait.o kfifo.o sys_ni.o posix-cpu-timers.o mutex.o \
 	    hrtimer.o rwsem.o nsproxy.o srcu.o semaphore.o \
 	    notifier.o ksysfs.o pm_qos_params.o sched_clock.o cred.o \
-	    async.o range.o jump_label.o
+	    async.o range.o jump_label.o dkp.o
 obj-y += groups.o
 
 ifdef CONFIG_FUNCTION_TRACER
@@ -23,6 +23,8 @@ CFLAGS_REMOVE_cgroup-debug.o = -pg
 CFLAGS_REMOVE_sched_clock.o = -pg
 CFLAGS_REMOVE_irq_work.o = -pg
 endif
+
+CFLAGS_sys_ni.o = $(DISABLE_LTO)
 
 obj-$(CONFIG_FREEZER) += freezer.o
 obj-$(CONFIG_PROFILING) += profile.o
@@ -108,15 +110,6 @@ obj-$(CONFIG_PERF_EVENTS) += events/
 obj-$(CONFIG_USER_RETURN_NOTIFIER) += user-return-notifier.o
 obj-$(CONFIG_PADATA) += padata.o
 obj-$(CONFIG_CRASH_DUMP) += crash_dump.o
-
-ifneq ($(CONFIG_SCHED_OMIT_FRAME_POINTER),y)
-# According to Alan Modra <alan@linuxcare.com.au>, the -fno-omit-frame-pointer is
-# needed for x86 only.  Why this used to be enabled for all architectures is beyond
-# me.  I suspect most platforms don't need this, but until we know that for sure
-# I turn this off for IA-64 only.  Andreas Schwab says it's also needed on m68k
-# to get a correct value for the wait-channel (WCHAN in ps). --davidm
-CFLAGS_sched.o := $(PROFILING) -fno-omit-frame-pointer
-endif
 
 $(obj)/configs.o: $(obj)/config_data.h
 

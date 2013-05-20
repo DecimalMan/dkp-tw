@@ -134,15 +134,20 @@ static const struct {
 	unsigned int istore_size;
 	unsigned int pix_shader_start;
 } adreno_gpulist[] = {
+#if __adreno_is_a20x
 	{ ADRENO_REV_A200, 0, 2, ANY_ID, ANY_ID,
 		"yamato_pm4.fw", "yamato_pfp.fw", &adreno_a2xx_gpudev,
 		512, 384},
 	{ ADRENO_REV_A205, 0, 1, 0, ANY_ID,
 		"yamato_pm4.fw", "yamato_pfp.fw", &adreno_a2xx_gpudev,
 		512, 384},
+#endif
+#if __adreno_is_a220
 	{ ADRENO_REV_A220, 2, 1, ANY_ID, ANY_ID,
 		"leia_pm4_470.fw", "leia_pfp_470.fw", &adreno_a2xx_gpudev,
 		512, 384},
+#endif
+#if __adreno_is_a225
 	/*
 	 * patchlevel 5 (8960v2) needs special pm4 firmware to work around
 	 * a hardware problem.
@@ -156,6 +161,7 @@ static const struct {
 	{ ADRENO_REV_A225, 2, 2, ANY_ID, ANY_ID,
 		"a225_pm4.fw", "a225_pfp.fw", &adreno_a2xx_gpudev,
 		1536, 768 },
+#endif
 };
 
 static void adreno_gmeminit(struct adreno_device *adreno_dev)
@@ -265,6 +271,10 @@ error:
 	return result;
 }
 
+#ifndef CONFIG_DEBUG_FS
+#define kgsl_cff_dump_enable (0)
+#endif
+
 static void adreno_setstate(struct kgsl_device *device,
 					unsigned int context_id,
 					uint32_t flags)
@@ -351,7 +361,6 @@ static void adreno_setstate(struct kgsl_device *device,
 			*cmds++ = 0x00000000;
 			sizedwords += 21;
 		}
-
 
 		if (flags & (KGSL_MMUFLAGS_PTUPDATE | KGSL_MMUFLAGS_TLBFLUSH)) {
 			*cmds++ = cp_type3_packet(CP_INVALIDATE_STATE, 1);

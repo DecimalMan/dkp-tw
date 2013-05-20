@@ -529,6 +529,7 @@ EXPORT_SYMBOL(dump_fpu);
 extern void kernel_thread_helper(void);
 asm(	".pushsection .text\n"
 "	.align\n"
+"	.global kernel_thread_helper\n"
 "	.type	kernel_thread_helper, #function\n"
 "kernel_thread_helper:\n"
 #ifdef CONFIG_TRACE_IRQFLAGS
@@ -545,6 +546,7 @@ asm(	".pushsection .text\n"
 extern void kernel_thread_exit(long code);
 asm(	".pushsection .text\n"
 "	.align\n"
+"	.global kernel_thread_exit\n"
 "	.type	kernel_thread_exit, #function\n"
 "kernel_thread_exit:\n"
 "	.fnstart\n"
@@ -589,6 +591,7 @@ unsigned long get_wchan(struct task_struct *p)
 	frame.sp = thread_saved_sp(p);
 	frame.lr = 0;			/* recovered from the stack */
 	frame.pc = thread_saved_pc(p);
+#if defined(CONFIG_ARM_UNWIND) || defined(CONFIG_FRAME_POINTER)
 	do {
 		int ret = unwind_frame(&frame);
 		if (ret < 0)
@@ -596,6 +599,7 @@ unsigned long get_wchan(struct task_struct *p)
 		if (!in_sched_functions(frame.pc))
 			return frame.pc;
 	} while (count ++ < 16);
+#endif
 	return 0;
 }
 

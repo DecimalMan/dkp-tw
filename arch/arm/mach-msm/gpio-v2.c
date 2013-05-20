@@ -530,6 +530,7 @@ static int msm_gpio_suspend(void)
 	return 0;
 }
 
+#ifdef CONFIG_SHOW_RESUME_IRQ
 extern int msm_show_resume_irq_mask;
 
 void msm_gpio_show_resume_irq(void)
@@ -552,6 +553,10 @@ void msm_gpio_show_resume_irq(void)
 	}
 	spin_unlock_irqrestore(&tlmm_lock, irq_flags);
 }
+#else
+static inline void msm_gpio_show_resume_irq(void)
+{ return; }
+#endif
 
 static void msm_gpio_resume(void)
 {

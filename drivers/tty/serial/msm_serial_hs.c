@@ -63,9 +63,13 @@
 
 #include "msm_serial_hs_hwreg.h"
 
+#ifdef DEBUG
 static int hs_serial_debug_mask = 1;
 module_param_named(debug_mask, hs_serial_debug_mask,
 		   int, S_IRUGO | S_IWUSR | S_IWGRP);
+#else
+#define hs_serial_debug_mask (0)
+#endif
 
 enum flush_reason {
 	FLUSH_NONE,

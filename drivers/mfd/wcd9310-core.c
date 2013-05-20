@@ -1021,7 +1021,6 @@ static int tabla_i2c_resume(struct i2c_client *i2cdev)
 {
 	struct tabla *tabla = dev_get_drvdata(&i2cdev->dev);
 	if (tabla == NULL) {
-		pr_err("tabla is NULL\n");
 		return 0;
 	}
 	return tabla_resume(tabla);
@@ -1079,7 +1078,6 @@ static int tabla_i2c_suspend(struct i2c_client *i2cdev, pm_message_t pmesg)
 {
 	struct tabla *tabla = dev_get_drvdata(&i2cdev->dev);
 	if (tabla == NULL) {
-		pr_err("tabla is NULL\n");
 		return 0;
 	}
 	return tabla_suspend(tabla, pmesg);

@@ -37,8 +37,6 @@
 int middle_of_blt_change = 0;
 #endif
 
-struct mdp4_statistic mdp4_stat;
-
 #define MDP4_SW_RESET;
 
 
@@ -396,13 +394,11 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	if (isr == 0)
 		goto out;
 
-	mdp4_stat.intr_tot++;
 	mask = inpdw(MDP_INTR_ENABLE);
 	outpdw(MDP_INTR_CLEAR, isr);
 
 	if (isr & INTR_PRIMARY_INTF_UDERRUN) {
 		pr_debug("%s: UNDERRUN -- primary\n", __func__);
-		mdp4_stat.intr_underrun_p++;
 #ifdef BLT_MODE_CHANGE_ISSUE
 		if(middle_of_blt_change)
 		{
@@ -433,7 +429,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 
 	if (isr & INTR_EXTERNAL_INTF_UDERRUN) {
 		pr_debug("%s: UNDERRUN -- external\n", __func__);
-		mdp4_stat.intr_underrun_e++;
 	}
 
 	isr &= mask;
@@ -444,7 +439,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	panel = mdp4_overlay_panel_list();
 
 	if (isr & INTR_DMA_P_DONE) {
-		mdp4_stat.intr_dma_p++;
 		dma = &dma2_data;
 		if (panel & MDP4_PANEL_LCDC)
 			mdp4_dmap_done_lcdc(0);
@@ -472,7 +466,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 #endif
 	}
 	if (isr & INTR_DMA_S_DONE) {
-		mdp4_stat.intr_dma_s++;
 #if defined(CONFIG_FB_MSM_OVERLAY) && defined(CONFIG_FB_MSM_MDDI)
 		dma = &dma2_data;
 #else
@@ -485,13 +478,11 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 		complete(&dma->comp);
 	}
 	if (isr & INTR_DMA_E_DONE) {
-		mdp4_stat.intr_dma_e++;
 		if (panel & MDP4_PANEL_DTV)
 			mdp4_dmae_done_dtv();
 	}
 #ifdef CONFIG_FB_MSM_OVERLAY
 	if (isr & INTR_OVERLAY0_DONE) {
-		mdp4_stat.intr_overlay0++;
 		dma = &dma2_data;
 		if (panel & (MDP4_PANEL_LCDC | MDP4_PANEL_DSI_VIDEO)) {
 			/* disable LCDC interrupt */
@@ -513,7 +504,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 		mdp_hw_cursor_done();
 	}
 	if (isr & INTR_OVERLAY1_DONE) {
-		mdp4_stat.intr_overlay1++;
 		/* disable DTV interrupt */
 		dma = &dma_e_data;
 		spin_lock(&mdp_spin_lock);
@@ -532,7 +522,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	}
 #if defined(CONFIG_FB_MSM_WRITEBACK_MSM_PANEL)
 	if (isr & INTR_OVERLAY2_DONE) {
-		mdp4_stat.intr_overlay2++;
 		/* disable DTV interrupt */
 		dma = &dma_wb_data;
 		spin_lock(&mdp_spin_lock);
@@ -547,7 +536,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 #endif	/* OVERLAY */
 
 	if (isr & INTR_PRIMARY_VSYNC) {
-		mdp4_stat.intr_vsync_p++;
 		if (panel & MDP4_PANEL_LCDC)
 			mdp4_primary_vsync_lcdc();
 		else if (panel & MDP4_PANEL_DSI_VIDEO)
@@ -555,37 +543,31 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	}
 #ifdef CONFIG_FB_MSM_DTV
 	if (isr & INTR_EXTERNAL_VSYNC) {
-		mdp4_stat.intr_vsync_e++;
 		if (panel & MDP4_PANEL_DTV)
 			mdp4_external_vsync_dtv();
 	}
 #endif
 	if (isr & INTR_DMA_P_HISTOGRAM) {
-		mdp4_stat.intr_histogram++;
 		ret = mdp_histogram_block2mgmt(MDP_BLOCK_DMA_P, &mgmt);
 		if (!ret)
 			mdp_histogram_handle_isr(mgmt);
 	}
 	if (isr & INTR_DMA_S_HISTOGRAM) {
-		mdp4_stat.intr_histogram++;
 		ret = mdp_histogram_block2mgmt(MDP_BLOCK_DMA_S, &mgmt);
 		if (!ret)
 			mdp_histogram_handle_isr(mgmt);
 	}
 	if (isr & INTR_VG1_HISTOGRAM) {
-		mdp4_stat.intr_histogram++;
 		ret = mdp_histogram_block2mgmt(MDP_BLOCK_VG_1, &mgmt);
 		if (!ret)
 			mdp_histogram_handle_isr(mgmt);
 	}
 	if (isr & INTR_VG2_HISTOGRAM) {
-		mdp4_stat.intr_histogram++;
 		ret = mdp_histogram_block2mgmt(MDP_BLOCK_VG_2, &mgmt);
 		if (!ret)
 			mdp_histogram_handle_isr(mgmt);
 	}
 	if (isr & INTR_PRIMARY_RDPTR) {
-		mdp4_stat.intr_rdptr++;
 		mdp4_primary_rdptr();
 	}
 

@@ -48,7 +48,7 @@ struct rnd_state {
 
 #ifdef __KERNEL__
 
-extern void rand_initialize_irq(int irq);
+//extern void rand_initialize_irq(int irq);
 
 extern void add_input_randomness(unsigned int type, unsigned int code,
 				 unsigned int value);
@@ -90,6 +90,11 @@ static inline void prandom32_seed(struct rnd_state *state, u64 seed)
 	state->s2 = __seed(i, 7);
 	state->s3 = __seed(i, 15);
 }
+
+#ifdef CONFIG_ARCH_RANDOM_HWRNG
+extern int arch_get_random_long(unsigned long *v);
+extern int arch_get_random_int(unsigned int *v);
+#endif
 
 #endif /* __KERNEL___ */
 

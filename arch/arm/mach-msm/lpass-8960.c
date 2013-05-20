@@ -161,6 +161,7 @@ static struct subsys_data lpass_8960 = {
 	.crash_shutdown = lpass_crash_shutdown
 };
 
+#ifdef CONFIG_DEBUG_FS
 static int lpass_debug_set(void *data, u64 val)
 {
 	if (val == 1)
@@ -190,6 +191,7 @@ static int lpass_debugfs_init(void)
 		&lpass_debug_fops);
 	return 0;
 }
+#endif
 
 static int __init lpass_restart_init(void)
 {
@@ -198,7 +200,7 @@ static int __init lpass_restart_init(void)
 
 static int __init lpass_fatal_init(void)
 {
-	int ret;
+	int ret = 0;
 
 	ret = smsm_state_cb_register(SMSM_Q6_STATE, SMSM_RESET,
 		lpass_smsm_state_cb, 0);
@@ -239,7 +241,9 @@ static int __init lpass_fatal_init(void)
 		goto irq_err;
 	}
 
+#ifdef CONFIG_DEBUG_FS
 	ret = lpass_debugfs_init();
+#endif
 
 	pr_info("%s: lpass SSR driver init'ed.\n", __func__);
 irq_err:

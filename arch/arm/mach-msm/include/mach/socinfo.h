@@ -74,196 +74,27 @@ uint32_t socinfo_get_platform_version(void);
 int __init socinfo_init(void) __must_check;
 const int read_msm_cpu_type(void);
 const int get_core_count(void);
+const int cpu_is_krait(void);
 const int cpu_is_krait_v1(void);
+const int cpu_is_krait_v2(void);
 
-static inline int cpu_is_msm7x01(void)
-{
-#ifdef CONFIG_ARCH_MSM7X01A
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
+// Why do this at runtime?
+#define cpu_is_msm7x01() (0)
+#define cpu_is_msm7x25() (0)
+#define cpu_is_msm7x27() (0)
+#define cpu_is_msm7x27a() (0)
+#define cpu_is_msm7x27aa() (0)
+#define cpu_is_msm7x25a() (0)
+#define cpu_is_msm7x25aa() (0)
+#define cpu_is_msm7x30() (0)
+#define cpu_is_qsd8x50() (0)
+#define cpu_is_msm8x55() (0)
+#define cpu_is_msm8x60() (0)
+#define cpu_is_msm8960() (1)
+#define cpu_is_apq8064() (0)
+#define cpu_is_msm8930() (0)
+#define cpu_is_msm8627() (0)
+#define cpu_is_fsm9xxx() (0)
+#define cpu_is_msm9615() (0)
 
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X01;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x25(void)
-{
-#ifdef CONFIG_ARCH_MSM7X25
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X25;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x27(void)
-{
-#ifdef CONFIG_ARCH_MSM7X27
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X27;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x27a(void)
-{
-#ifdef CONFIG_ARCH_MSM7X27A
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X27A;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x27aa(void)
-{
-#ifdef CONFIG_ARCH_MSM7X27A
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X27AA;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x25a(void)
-{
-#ifdef CONFIG_ARCH_MSM7X27A
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X25A;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x25aa(void)
-{
-#ifdef CONFIG_ARCH_MSM7X27A
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X25AA;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm7x30(void)
-{
-#ifdef CONFIG_ARCH_MSM7X30
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_7X30;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_qsd8x50(void)
-{
-#ifdef CONFIG_ARCH_QSD8X50
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_8X50;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm8x55(void)
-{
-#ifdef CONFIG_ARCH_MSM7X30
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_8X55;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm8x60(void)
-{
-#ifdef CONFIG_ARCH_MSM8X60
-	return read_msm_cpu_type() == MSM_CPU_8X60;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm8960(void)
-{
-#ifdef CONFIG_ARCH_MSM8960
-	return read_msm_cpu_type() == MSM_CPU_8960;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_apq8064(void)
-{
-#ifdef CONFIG_ARCH_APQ8064
-	return read_msm_cpu_type() == MSM_CPU_8064;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm8930(void)
-{
-#ifdef CONFIG_ARCH_MSM8930
-	return (read_msm_cpu_type() == MSM_CPU_8930) ||
-	       (read_msm_cpu_type() == MSM_CPU_8627);
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm8627(void)
-{
-/* 8930 and 8627 will share the same CONFIG_ARCH type unless otherwise needed */
-#ifdef CONFIG_ARCH_MSM8930
-	return read_msm_cpu_type() == MSM_CPU_8627;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_fsm9xxx(void)
-{
-#ifdef CONFIG_ARCH_FSM9XXX
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == FSM_CPU_9XXX;
-#else
-	return 0;
-#endif
-}
-
-static inline int cpu_is_msm9615(void)
-{
-#ifdef CONFIG_ARCH_MSM9615
-	enum msm_cpu cpu = socinfo_get_msm_cpu();
-
-	BUG_ON(cpu == MSM_CPU_UNKNOWN);
-	return cpu == MSM_CPU_9615;
-#else
-	return 0;
-#endif
-}
 #endif

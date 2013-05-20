@@ -76,7 +76,7 @@
 #include <asm/tlb.h>
 #include <asm/irq_regs.h>
 #include <asm/mutex.h>
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
 #endif
 
@@ -3207,6 +3207,7 @@ unsigned long nr_running(void)
 
 	return sum;
 }
+EXPORT_SYMBOL(nr_running);
 
 unsigned long nr_uninterruptible(void)
 {
@@ -3224,6 +3225,7 @@ unsigned long nr_uninterruptible(void)
 
 	return sum;
 }
+EXPORT_SYMBOL(nr_uninterruptible);
 
 unsigned long long nr_context_switches(void)
 {
@@ -3235,6 +3237,7 @@ unsigned long long nr_context_switches(void)
 
 	return sum;
 }
+EXPORT_SYMBOL(nr_context_switches);
 
 unsigned long nr_iowait(void)
 {
@@ -3245,18 +3248,21 @@ unsigned long nr_iowait(void)
 
 	return sum;
 }
+EXPORT_SYMBOL(nr_iowait);
 
 unsigned long nr_iowait_cpu(int cpu)
 {
 	struct rq *this = cpu_rq(cpu);
 	return atomic_read(&this->nr_iowait);
 }
+EXPORT_SYMBOL(nr_iowait_cpu);
 
 unsigned long this_cpu_load(void)
 {
 	struct rq *this = this_rq();
 	return this->cpu_load[0];
 }
+EXPORT_SYMBOL(this_cpu_load);
 
 
 /* Variables and functions for calc_load */
@@ -4418,7 +4424,6 @@ asmlinkage void __sched preempt_schedule_irq(void)
 
 	do {
 		add_preempt_count(PREEMPT_ACTIVE);
-		secdbg_sched_msg(">prmptsched_irq");
 		local_irq_enable();
 		__schedule();
 		local_irq_disable();

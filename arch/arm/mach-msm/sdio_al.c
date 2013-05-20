@@ -153,6 +153,7 @@
 
 #define SDIO_TEST_POSTFIX "_TEST"
 
+#ifdef DEBUG
 #define DATA_DEBUG(x, y...)						\
 	do {								\
 		if (sdio_al->debug.debug_data_on)			\
@@ -185,6 +186,13 @@
 			pr_info(y);					\
 		sdio_al_log(x, y);					\
 	} while (0)
+#else
+#define DATA_DEBUG(f...)
+#define LPM_DEBUG(f...)
+#define sdio_al_loge(f...)
+#define sdio_al_logi(f...)
+#define CLOSE_DEBUG(f...)
+#endif
 
 /* The index of the SDIO card used for the sdio_al_dloader */
 #define SDIO_BOOTLOADER_CARD_INDEX 1
@@ -197,6 +205,7 @@ enum sdio_al_device_state {
 	MODEM_RESTART
 };
 
+#ifdef DEBUG
 struct sdio_al_debug {
 	u8 debug_lpm_on;
 	u8 debug_data_on;
@@ -208,6 +217,7 @@ struct sdio_al_debug {
 	struct dentry *sdio_al_debug_info;
 	struct dentry *sdio_al_debug_log_buffers[MAX_NUM_OF_SDIO_DEVICES + 1];
 };
+#endif
 
 /* Polling time for the inactivity timer for devices that doesn't have
  * a streaming channel
@@ -317,6 +327,7 @@ struct peer_sdioc_sw_mailbox {
 	struct peer_sdioc_channel_config ch_config[SDIO_AL_MAX_CHANNELS];
 };
 
+#ifdef DEBUG
 #define SDIO_AL_DEBUG_LOG_SIZE 3000
 struct sdio_al_local_log {
 	char buffer[SDIO_AL_DEBUG_LOG_SIZE];
@@ -326,6 +337,10 @@ struct sdio_al_local_log {
 
 #define SDIO_AL_DEBUG_TMP_LOG_SIZE 250
 static int sdio_al_log(struct sdio_al_local_log *, const char *fmt, ...);
+#else
+static int sdio_al_log(struct sdio_al_local_log *, const char *fmt, ...)
+{ return 1; }
+#endif
 
 /**
  *  SDIO Abstraction Layer driver context.
@@ -342,8 +357,10 @@ static int sdio_al_log(struct sdio_al_local_log *, const char *fmt, ...);
  *
  */
 struct sdio_al {
+#ifdef DEBUG
 	struct sdio_al_local_log gen_log;
 	struct sdio_al_local_log device_log[MAX_NUM_OF_SDIO_DEVICES];
+#endif
 	struct sdio_al_platform_data *pdata;
 	struct sdio_al_debug debug;
 	struct sdio_al_device *devices[MAX_NUM_OF_SDIO_DEVICES];
@@ -404,7 +421,9 @@ struct sdio_al_work {
  *
  */
 struct sdio_al_device {
+#ifdef DEBUG
 	struct sdio_al_local_log *dev_log;
+#endif
 	struct mmc_card *card;
 	struct mmc_host *host;
 	struct sdio_mailbox *mailbox;
@@ -467,6 +486,7 @@ enum peer_op_state {
 };
 
 
+#ifdef DEBUG
 /*
  * On the kernel command line specify
  * sdio_al.debug_lpm_on=1 to enable the LPM debug messages
@@ -488,6 +508,11 @@ module_param(debug_data_on, int, 0);
  */
 static int debug_close_on = 1;
 module_param(debug_close_on, int, 0);
+#else
+#define debug_lpm_on (0)
+#define debug_data_on (0)
+#define debug_close_on (0)
+#endif
 
 /** The driver context */
 static struct sdio_al *sdio_al;
@@ -658,6 +683,7 @@ static void sdio_al_debugfs_cleanup(void)
 }
 #endif
 
+#ifdef DEBUG
 static int sdio_al_log(struct sdio_al_local_log *log, const char *fmt, ...)
 {
 	va_list args;
@@ -692,6 +718,7 @@ static int sdio_al_log(struct sdio_al_local_log *log, const char *fmt, ...)
 
 	return r;
 }
+#endif
 
 static int sdio_al_verify_func1(struct sdio_al_device *sdio_al_dev,
 				char const *func)
@@ -796,8 +823,10 @@ static void sdio_al_get_into_err_state(struct sdio_al_device *sdio_al_dev)
 		return;
 
 	sdio_al_dev->is_err = true;
+#ifdef DEBUG
 	sdio_al->debug.debug_data_on = 0;
 	sdio_al->debug.debug_lpm_on = 0;
+#endif
 	sdio_al_print_info();
 }
 
@@ -4032,6 +4061,7 @@ static void sdio_print_mailbox(char *prefix_str, struct sdio_mailbox *mailbox)
 
 static void sdio_al_print_info(void)
 {
+#ifdef DEBUG
 	int i = 0;
 	int j = 0;
 	int ret = 0;
@@ -4222,6 +4252,7 @@ static void sdio_al_print_info(void)
 		/* Printing HW Mailbox */
 		sdio_print_mailbox(buf, hw_mailbox);
 	}
+#endif
 }
 
 static struct sdio_device_id sdio_al_sdioid[] = {
@@ -4289,9 +4320,11 @@ static int __init sdio_al_init(void)
 
 	sdio_al->unittest_mode = false;
 
+#ifdef DEBUG
 	sdio_al->debug.debug_lpm_on = debug_lpm_on;
 	sdio_al->debug.debug_data_on = debug_data_on;
 	sdio_al->debug.debug_close_on = debug_close_on;
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 	sdio_al_debugfs_init();

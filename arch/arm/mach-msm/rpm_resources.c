@@ -20,6 +20,7 @@
 #include <linux/proc_fs.h>
 #include <linux/spinlock.h>
 #include <linux/cpu.h>
+#include <linux/hrtimer.h>
 #include <mach/rpm.h>
 #include <mach/msm_iomap.h>
 #include <asm/mach-types.h>
@@ -30,6 +31,9 @@
 #include "spm.h"
 #include "idle.h"
 
+//#define DEBUG
+//#define SYSFS
+
 /******************************************************************************
  * Debug Definitions
  *****************************************************************************/
@@ -39,10 +43,14 @@ enum {
 	MSM_RPMRS_DEBUG_BUFFER = BIT(1),
 };
 
+#ifdef DEBUG
 static int msm_rpmrs_debug_mask;
 module_param_named(
 	debug_mask, msm_rpmrs_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
 );
+#else
+#define msm_rpmrs_debug_mask (0)
+#endif
 
 static struct msm_rpmrs_level *msm_rpmrs_levels;
 static int msm_rpmrs_level_count;
@@ -60,16 +68,22 @@ static bool msm_rpmrs_vdd_dig_beyond_limits(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_aggregate_vdd_dig(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_vdd_dig(void);
 
+#ifdef SYSFS
 static ssize_t msm_rpmrs_resource_attr_show(
 	struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t msm_rpmrs_resource_attr_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count);
 
-#define MSM_RPMRS_MAX_RS_REGISTER_COUNT 2
-
 #define RPMRS_ATTR(_name) \
 	__ATTR(_name, S_IRUGO|S_IWUSR, \
 		msm_rpmrs_resource_attr_show, msm_rpmrs_resource_attr_store)
+#define LIMITS(func) func
+#else
+#define RPMRS_ATTR(_name) { }
+#define LIMITS(func) (NULL)
+#endif
+
+#define MSM_RPMRS_MAX_RS_REGISTER_COUNT 2
 
 struct msm_rpmrs_resource {
 	struct msm_rpm_iv_pair rs[MSM_RPMRS_MAX_RS_REGISTER_COUNT];
@@ -89,7 +103,7 @@ static struct msm_rpmrs_resource msm_rpmrs_pxo = {
 	.rs[0].id = MSM_RPMRS_ID_PXO_CLK,
 	.size = 1,
 	.name = "pxo",
-	.beyond_limits = msm_rpmrs_pxo_beyond_limits,
+	.beyond_limits = LIMITS(msm_rpmrs_pxo_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_pxo,
 	.restore = msm_rpmrs_restore_pxo,
 	.ko_attr = RPMRS_ATTR(pxo),
@@ -99,7 +113,7 @@ static struct msm_rpmrs_resource msm_rpmrs_l2_cache = {
 	.rs[0].id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL,
 	.size = 1,
 	.name = "L2_cache",
-	.beyond_limits = msm_rpmrs_l2_cache_beyond_limits,
+	.beyond_limits = LIMITS(msm_rpmrs_l2_cache_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_l2_cache,
 	.restore = msm_rpmrs_restore_l2_cache,
 	.ko_attr = RPMRS_ATTR(L2_cache),
@@ -110,7 +124,7 @@ static struct msm_rpmrs_resource msm_rpmrs_vdd_mem = {
 	.rs[1].id = MSM_RPMRS_ID_VDD_MEM_1,
 	.size = 2,
 	.name = "vdd_mem",
-	.beyond_limits = msm_rpmrs_vdd_mem_beyond_limits,
+	.beyond_limits = LIMITS(msm_rpmrs_vdd_mem_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_vdd_mem,
 	.restore = msm_rpmrs_restore_vdd_mem,
 	.ko_attr = RPMRS_ATTR(vdd_mem),
@@ -121,7 +135,7 @@ static struct msm_rpmrs_resource msm_rpmrs_vdd_dig = {
 	.rs[1].id = MSM_RPMRS_ID_VDD_DIG_1,
 	.size = 2,
 	.name = "vdd_dig",
-	.beyond_limits = msm_rpmrs_vdd_dig_beyond_limits,
+	.beyond_limits = LIMITS(msm_rpmrs_vdd_dig_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_vdd_dig,
 	.restore = msm_rpmrs_restore_vdd_dig,
 	.ko_attr = RPMRS_ATTR(vdd_dig),
@@ -152,6 +166,7 @@ static DEFINE_SPINLOCK(msm_rpmrs_lock);
 
 #define MSM_RPMRS_VDD(v)  ((v) & (MSM_RPMRS_VDD_MASK))
 
+#ifdef SYSFS
 /******************************************************************************
  * Attribute Definitions
  *****************************************************************************/
@@ -177,6 +192,7 @@ static struct attribute_group msm_rpmrs_mode_attribute_group = {
 
 #define GET_RS_FROM_ATTR(attr) \
 	(container_of(attr, struct msm_rpmrs_resource, ko_attr))
+#endif
 
 
 /******************************************************************************
@@ -419,6 +435,7 @@ static void msm_rpmrs_update_levels(void)
 
 		level->available = true;
 
+#ifdef SYSFS
 		for (k = 0; k < ARRAY_SIZE(msm_rpmrs_resources); k++) {
 			struct msm_rpmrs_resource *rs = msm_rpmrs_resources[k];
 
@@ -428,6 +445,7 @@ static void msm_rpmrs_update_levels(void)
 				break;
 			}
 		}
+#endif
 	}
 }
 
@@ -654,6 +672,7 @@ static int msm_rpmrs_clear_common(
  * Attribute Functions
  *****************************************************************************/
 
+#ifdef SYSFS
 static ssize_t msm_rpmrs_resource_attr_show(
 	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
@@ -772,6 +791,7 @@ resource_sysfs_add_exit:
 
 	return rc;
 }
+#endif
 
 /******************************************************************************
  * Public Functions
@@ -846,6 +866,7 @@ int msm_rpmrs_clear_noirq(int ctx, struct msm_rpm_iv_pair *req, int count)
 	return msm_rpmrs_clear_common(ctx, req, count, true);
 }
 
+#ifdef BOGUS
 void msm_rpmrs_show_resources(void)
 {
 	struct msm_rpmrs_resource *rs;
@@ -866,6 +887,9 @@ void msm_rpmrs_show_resources(void)
 	}
 	spin_unlock_irqrestore(&msm_rpmrs_lock, flags);
 }
+#else
+void msm_rpmrs_show_resources(void) { return; }
+#endif
 
 struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 	bool from_idle, enum msm_pm_sleep_mode sleep_mode, uint32_t latency_us,
@@ -1022,7 +1046,9 @@ static int __init msm_rpmrs_init(void)
 		}
 	}
 
+#ifdef SYSFS
 	rc = msm_rpmrs_resource_sysfs_add();
+#endif
 
 init_exit:
 	return rc;
@@ -1051,7 +1077,7 @@ static int __init msm_rpmrs_l2_init(void)
 		msm_pm_set_l2_flush_flag(0);
 
 		msm_rpmrs_l2_cache.beyond_limits =
-			msm_spm_l2_cache_beyond_limits;
+			LIMITS(msm_spm_l2_cache_beyond_limits);
 		msm_rpmrs_l2_cache.aggregate = NULL;
 		msm_rpmrs_l2_cache.restore = NULL;
 

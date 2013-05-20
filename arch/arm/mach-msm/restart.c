@@ -301,13 +301,11 @@ void arch_reset(char mode, const char *cmd)
 			__raw_writel(0x77665501, restart_reason);
 		}
 	}
-#ifdef CONFIG_SEC_DEBUG
 	else {
 		printk(KERN_NOTICE "%s : clear reset flag\r\n", __func__);
 		/* clear abnormal reset flag */
 		__raw_writel(0x12345678, restart_reason);
 	}
-#endif
 
 	__raw_writel(0, msm_tmr0_base + WDT0_EN);
 	if (!(machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())) {

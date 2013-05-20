@@ -81,7 +81,9 @@ NORET_TYPE void panic(const char * fmt, ...)
 	 * Disable the Trace AS SOON AS POSSIBLE So we can preserve the
 	 * Faulty Instructions for Analysis
 	 */
+#ifdef CONFIG_MSM_QDSS
 	 __etb_disable();
+#endif
 
 	/*
 	 * It's possible to come here directly from a panic-assertion and
@@ -89,7 +91,6 @@ NORET_TYPE void panic(const char * fmt, ...)
 	 * preempt to be disabled. No point enabling it later though...
 	 */
 	preempt_disable();
-	secdbg_sched_msg("!!panic!!");
 	console_verbose();
 	bust_spinlocks(1);
 	va_start(args, fmt);

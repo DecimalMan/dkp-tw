@@ -36,6 +36,7 @@
  * to clear the workspace. This is left to the caller to avoid
  * unnecessary clears between chained hashing operations.
  */
+void sha_transform(__u32 *digest, const char *in, __u32 *W) __attribute__((weak));
 void sha_transform(__u32 *digest, const char *in, __u32 *W)
 {
 	__u32 a, b, c, d, e, t, i;
@@ -78,12 +79,12 @@ void sha_transform(__u32 *digest, const char *in, __u32 *W)
 	digest[3] += d;
 	digest[4] += e;
 }
-EXPORT_SYMBOL(sha_transform);
 
 /**
  * sha_init - initialize the vectors for a SHA1 digest
  * @buf: vector to initialize
  */
+void sha_init(__u32 *buf) __attribute__((weak));
 void sha_init(__u32 *buf)
 {
 	buf[0] = 0x67452301;
@@ -92,4 +93,3 @@ void sha_init(__u32 *buf)
 	buf[3] = 0x10325476;
 	buf[4] = 0xc3d2e1f0;
 }
-

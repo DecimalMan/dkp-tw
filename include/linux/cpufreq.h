@@ -171,6 +171,10 @@ static inline unsigned long cpufreq_scale(unsigned long old, u_int div, u_int mu
 #define CPUFREQ_GOV_START  1
 #define CPUFREQ_GOV_STOP   2
 #define CPUFREQ_GOV_LIMITS 3
+#ifdef CONFIG_INTERACTION_HINTS
+#define CPUFREQ_GOV_INTERACT 4
+#define CPUFREQ_GOV_NOINTERACT 5
+#endif
 
 struct cpufreq_governor {
 	char	name[CPUFREQ_NAME_LEN];
@@ -183,6 +187,7 @@ struct cpufreq_governor {
 	unsigned int max_transition_latency; /* HW must be able to switch to
 			next freq faster than this value in nano secs or we
 			will fallback to performance governor */
+	unsigned int flags;
 	struct list_head	governor_list;
 	struct module		*owner;
 };
@@ -353,7 +358,8 @@ static inline unsigned int cpufreq_quick_get(unsigned int cpu)
 #define LOW_MAX_FREQ_LIMIT 1188000
 
 #define MIN_FREQ_LIMIT 384000
-#define MAX_FREQ_LIMIT 1512000
+#define MAX_FREQ_LIMIT 2106000
+#define BOOT_FREQ_LIMIT 1512000
 
 enum {
 	SET_MIN = 0,
@@ -414,6 +420,21 @@ int cpufreq_set_limit_defered(unsigned int flag, unsigned int value);
 int cpufreq_get_dvfs_state(void);
 
 #endif
+
+#ifdef CONFIG_INTERACTION_HINTS
+enum {
+	INTERACT_ID_TOUCHSCREEN,
+	INTERACT_ID_SOFTKEY,
+	INTERACT_ID_HARDKEY,
+	INTERACT_ID_OTHER
+};
+void cpufreq_set_interactivity(int on, int idbit);
+#endif
+
+enum {
+	GOVFLAGS_HOTPLUG,
+	GOVFLAGS_ALLCPUS,
+};
 
 /*********************************************************************
  *                       CPUFREQ DEFAULT GOVERNOR                    *

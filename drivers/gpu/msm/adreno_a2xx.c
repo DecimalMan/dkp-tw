@@ -17,13 +17,21 @@
 #include "adreno.h"
 #include "adreno_a2xx_trace.h"
 
+#if __adreno_is_a2xx
+
 /*
  * These are the registers that are dumped with GPU snapshot
  * and postmortem.  The lists are dword offset pairs in the
  * form of {start offset, end offset} inclusive.
  */
 
+#if CONFIG_AXXX_REV
+#define REGCAT(h, r) (h ## r)
+#define REGRNG(r) REGCAT(register_ranges_a, r)
+#endif
+
 /* A200, A205 */
+#if __adreno_is_a20x
 const unsigned int a200_registers[] = {
 	0x0000, 0x0002, 0x0004, 0x000B, 0x003B, 0x003D, 0x0040, 0x0044,
 	0x0046, 0x0047, 0x01C0, 0x01C1, 0x01C3, 0x01C8, 0x01D5, 0x01D9,
@@ -51,8 +59,9 @@ const unsigned int a200_registers[] = {
 	0x2712, 0x2712, 0x2716, 0x271D, 0x2724, 0x2726, 0x2780, 0x2783,
 	0x4000, 0x4003, 0x4800, 0x4805, 0x4900, 0x4900, 0x4908, 0x4908,
 };
-
-/* A220, A225 */
+const unsigned int a200_registers_count = ARRAY_SIZE(a200_registers) / 2;
+#endif
+#if __adreno_is_a22x
 const unsigned int a220_registers[] = {
 	0x0000, 0x0002, 0x0004, 0x000B, 0x003B, 0x003D, 0x0040, 0x0044,
 	0x0046, 0x0047, 0x01C0, 0x01C1, 0x01C3, 0x01C8, 0x01D5, 0x01D9,
@@ -81,9 +90,8 @@ const unsigned int a220_registers[] = {
 	0x2724, 0x2726, 0x2780, 0x2783, 0x4000, 0x4003, 0x4800, 0x4805,
 	0x4900, 0x4900, 0x4908, 0x4908,
 };
-
-const unsigned int a200_registers_count = ARRAY_SIZE(a200_registers) / 2;
 const unsigned int a220_registers_count = ARRAY_SIZE(a220_registers) / 2;
+#endif
 
 /*
  *
@@ -420,6 +428,7 @@ static unsigned int *build_chicken_restore_cmds(
 /* context save                                                             */
 /****************************************************************************/
 
+#if __adreno_is_a20x
 static const unsigned int register_ranges_a20x[] = {
 	REG_RB_SURFACE_INFO, REG_RB_DEPTH_INFO,
 	REG_COHER_DEST_BASE_0, REG_PA_SC_SCREEN_SCISSOR_BR,
@@ -436,7 +445,8 @@ static const unsigned int register_ranges_a20x[] = {
 	REG_PA_SC_VIZ_QUERY, REG_PA_SC_VIZ_QUERY,
 	REG_VGT_VERTEX_REUSE_BLOCK_CNTL, REG_RB_DEPTH_CLEAR
 };
-
+#endif
+#if __adreno_is_a220
 static const unsigned int register_ranges_a220[] = {
 	REG_RB_SURFACE_INFO, REG_RB_DEPTH_INFO,
 	REG_COHER_DEST_BASE_0, REG_PA_SC_SCREEN_SCISSOR_BR,
@@ -457,7 +467,8 @@ static const unsigned int register_ranges_a220[] = {
 	REG_A220_PC_VERTEX_REUSE_BLOCK_CNTL,
 	REG_RB_COPY_CONTROL, REG_RB_DEPTH_CLEAR
 };
-
+#endif
+#if __adreno_is_a225
 static const unsigned int register_ranges_a225[] = {
 	REG_RB_SURFACE_INFO, REG_A225_RB_COLOR_INFO3,
 	REG_COHER_DEST_BASE_0, REG_PA_SC_SCREEN_SCISSOR_BR,
@@ -480,6 +491,7 @@ static const unsigned int register_ranges_a225[] = {
 	REG_A225_GRAS_UCP0X, REG_A225_GRAS_UCP5W,
 	REG_A225_GRAS_UCP_ENABLED, REG_A225_GRAS_UCP_ENABLED
 };
+#endif
 
 
 /* save h/w regs, alu constants, texture contants, etc. ...
@@ -506,6 +518,10 @@ static void build_regsave_cmds(struct adreno_device *adreno_dev,
 		const unsigned int *ptr_register_ranges;
 
 		/* Based on chip id choose the register ranges */
+#if CONFIG_AXXX_REV
+		ptr_register_ranges = REGRNG(CONFIG_AXXX_REV);
+		reg_array_size = ARRAY_SIZE(REGRNG(CONFIG_AXXX_REV));
+#else
 		if (adreno_is_a220(adreno_dev)) {
 			ptr_register_ranges = register_ranges_a220;
 			reg_array_size = ARRAY_SIZE(register_ranges_a220);
@@ -516,7 +532,7 @@ static void build_regsave_cmds(struct adreno_device *adreno_dev,
 			ptr_register_ranges = register_ranges_a20x;
 			reg_array_size = ARRAY_SIZE(register_ranges_a20x);
 		}
-
+#endif
 
 		/* Write HW registers into shadow */
 		for (i = 0; i < (reg_array_size/2) ; i++) {
@@ -1067,6 +1083,10 @@ static void build_regrestore_cmds(struct adreno_device *adreno_dev,
 #endif
 
 	/* Based on chip id choose the registers ranges*/
+#if CONFIG_AXXX_REV
+	ptr_register_ranges = REGRNG(CONFIG_AXXX_REV);
+	reg_array_size = ARRAY_SIZE(REGRNG(CONFIG_AXXX_REV));
+#else
 	if (adreno_is_a220(adreno_dev)) {
 		ptr_register_ranges = register_ranges_a220;
 		reg_array_size = ARRAY_SIZE(register_ranges_a220);
@@ -1077,6 +1097,7 @@ static void build_regrestore_cmds(struct adreno_device *adreno_dev,
 		ptr_register_ranges = register_ranges_a20x;
 		reg_array_size = ARRAY_SIZE(register_ranges_a20x);
 	}
+#endif
 
 
 	for (i = 0; i < (reg_array_size/2); i++) {
@@ -1788,3 +1809,5 @@ struct adreno_gpudev adreno_a2xx_gpudev = {
 	.irq_control = a2xx_irq_control,
 	.snapshot = a2xx_snapshot,
 };
+
+#endif /* __adreno_is_a2xx */

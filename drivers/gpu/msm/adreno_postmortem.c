@@ -15,6 +15,8 @@
 
 #include "kgsl.h"
 
+#ifdef CONFIG_DEBUG_FS
+
 #include "adreno.h"
 #include "adreno_pm4types.h"
 #include "adreno_ringbuffer.h"
@@ -674,7 +676,6 @@ static int adreno_dump(struct kgsl_device *device)
 	}
 
 	/* Dump the registers if the user asked for it */
-
 	if (adreno_is_a20x(adreno_dev))
 		adreno_dump_regs(device, a200_registers,
 			a200_registers_count);
@@ -769,3 +770,8 @@ int adreno_postmortem_dump(struct kgsl_device *device, int manual)
 
 	return 0;
 }
+#else
+int adreno_postmortem_dump(struct kgsl_device *device, int manual) {
+	return 0;
+}
+#endif

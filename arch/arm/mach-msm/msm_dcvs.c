@@ -85,11 +85,14 @@ struct dcvs_core {
 	int32_t timer_disabled;
 };
 
-static int msm_dcvs_debug;
 static int msm_dcvs_enabled = 1;
 module_param_named(enable, msm_dcvs_enabled, int, S_IRUGO | S_IWUSR | S_IWGRP);
-
+#ifdef DEBUG
+static int msm_dcvs_debug;
 static struct dentry *debugfs_base;
+#else
+#define msm_dcvs_debug (0)
+#endif
 
 static struct dcvs_core core_list[CORES_MAX];
 static DEFINE_MUTEX(core_list_lock);
@@ -735,6 +738,7 @@ static int __init msm_dcvs_late_init(void)
 		goto err;
 	}
 
+#ifdef DEBUG
 	debugfs_base = debugfs_create_dir("msm_dcvs", NULL);
 	if (!debugfs_base) {
 		__err("Cannot create debugfs base %s\n", "msm_dcvs");
@@ -748,12 +752,15 @@ static int __init msm_dcvs_late_init(void)
 		ret = -ENOMEM;
 		goto err;
 	}
+#endif
 
 err:
 	if (ret) {
 		kobject_del(cores_kobj);
 		cores_kobj = NULL;
+#ifdef DEBUG
 		debugfs_remove(debugfs_base);
+#endif
 	}
 
 	return ret;
