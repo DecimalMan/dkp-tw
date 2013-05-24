@@ -374,8 +374,6 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
-		   -Wno-sizeof-pointer-memaccess \
-		   $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD) \
 		   -D_$(TARGET_PRODUCT)_
 
 KBUILD_AFLAGS_KERNEL :=
@@ -567,6 +565,7 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
+ifeq (Go fuck yourselves, Samsung)
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os
 CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a
@@ -575,14 +574,39 @@ CFLAGS_GR	= -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loo
 CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
 else
 KBUILD_CFLAGS	+= -O3
-CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a \
-		  -funsafe-math-optimizations -funroll-loops -mvectorize-with-neon-quad \
-		  -ftree-loop-im -fivopts -funswitch-loops -fgcse-sm -fgcse-las
+CFLAGS_A15	= -marm -mtune=cortex-a15 -march=armv7-a -funroll-loops \
+		  -ftree-loop-im -fivopts -funswitch-loops -fgcse-sm -fgcse-las \
+		  -fsched-spec-load -fsched-pressure -fsched-stalled-insns=2 \
+		  -fsched-stalled-insns-dep=11 -fipa-pta -fipa-matrix-reorg
+		  # -fsched-spec-load-dangerous
 CFLAGS_GR	= -fgraphite-identity -floop-block -ftree-loop-linear \
 		  -floop-strip-mine -ftree-loop-distribution
 CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
 endif
 KBUILD_CFLAGS	+= $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD)
+else
+KBUILD_CFLAGS	+= -Os
+CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a
+CFLAGS_GR	= -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
+		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las
+CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
+CFLAGS_A15	= -marm -mtune=cortex-a15 -march=armv7-a \
+		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las \
+		  -fsched-spec-load -fsched-pressure -fsched-stalled-insns=2 \
+		  -fsched-stalled-insns-dep=11 -fipa-pta -fipa-matrix-reorg
+CFLAGS_GR	= -fgraphite-identity -floop-block -ftree-loop-linear \
+		  -ftree-loop-distribution
+CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
+CFLAGS_SCARY	= --param max-gcse-memory=1073741824 \
+		  --param max-gcse-insertion-ratio=50 \
+		  --param max-tail-merge-comparisons=100 \
+		  --param max-tail-merge-iterations=4 \
+		  --param l1-cache-size=16 \
+		  --param l2-cache-size=1024 \
+		  --param max-vartrack-size=0
+
+KBUILD_CFLAGS	+= $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD) $(CFLAGS_SCARY)
+endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
