@@ -592,8 +592,8 @@ CFLAGS_GR	= -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loo
 CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
 CFLAGS_A15	= -marm -mtune=cortex-a15 -march=armv7-a \
 		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las \
-		  -fsched-spec-load -fsched-pressure -fsched-stalled-insns=2 \
-		  -fsched-stalled-insns-dep=11 -fipa-pta -fipa-matrix-reorg
+		  -fsched-spec-load -fsched-pressure -fsched-stalled-insns=0 \
+		  -fsched-stalled-insns-dep=0 -fipa-pta
 CFLAGS_GR	= -fgraphite-identity -floop-block -ftree-loop-linear \
 		  -ftree-loop-distribution
 CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
