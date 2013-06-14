@@ -2075,14 +2075,14 @@ void acpuclk_enable_oc_freqs(unsigned int freq) {
 
 void acpuclk_set_override_vmin(int enable) {
 	if (enable) {
-		final_vmin = 700000;
-	} else {
 		final_vmin = krait_needs_vmin() ?
 			1150000 : 700000;
+	} else {
+		final_vmin = 700000;
 	}
 }
 int acpuclk_get_override_vmin(void) {
-	return final_vmin < 1150000;
+	return final_vmin >= 1150000;
 }
 
 static ssize_t store_vmin(struct kobject *kobj, struct attribute *attr,

@@ -565,47 +565,53 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
-ifeq (Go fuck yourselves, Samsung)
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -Os
-CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a
-CFLAGS_GR	= -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
-		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las
-CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
+# Optimize for size
+KBUILD_CFLAGS   += -Os
+# Generic ARM flags
+KBUILD_CFLAGS   += -marm -mtune=cortex-a15 -march=armv7-a -mfpu=neon -mfloat-abi=softfp
+# Loop optimizations
+KBUILD_CFLAGS   += -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
+                   -ftree-loop-im -fivopts
+# Modulo scheduling
+KBUILD_CFLAGS   += -fmodulo-sched -fmodulo-sched-allow-regmoves
+# GCC extras
+KBUILD_CFLAGS   += -fgcse-sm -fgcse-las -fsched-spec-load -fsched-pressure \
+                   -fsched-stalled-insns=0 -fsched-stalled-insns-dep=0
+# GCC params
+KBUILD_CFLAGS   += --param max-gcse-memory=1073741824 \
+                   --param max-gcse-insertion-ratio=50 \
+                   --param max-tail-merge-comparisons=100 \
+                   --param max-tail-merge-iterations=4 \
+                   --param l1-cache-size=16 \
+                   --param l2-cache-size=1024 \
+                   --param max-vartrack-size=0
 else
-KBUILD_CFLAGS	+= -O3
-CFLAGS_A15	= -marm -mtune=cortex-a15 -march=armv7-a -funroll-loops \
-		  -ftree-loop-im -fivopts -funswitch-loops -fgcse-sm -fgcse-las \
-		  -fsched-spec-load -fsched-pressure -fsched-stalled-insns=2 \
-		  -fsched-stalled-insns-dep=11 -fipa-pta -fipa-matrix-reorg
-		  # -fsched-spec-load-dangerous
-CFLAGS_GR	= -fgraphite-identity -floop-block -ftree-loop-linear \
-		  -floop-strip-mine -ftree-loop-distribution
-CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
+# Optimize for getting stuff done
+KBUILD_CFLAGS   += -O3
+# Generic ARM flags
+KBUILD_CFLAGS   += -marm -mtune=cortex-a15 -march=armv7-a -mfpu=neon -mfloat-abi=softfp \
+                   -mvectorize-with-neon-quad
+# Loop optimizations
+KBUILD_CFLAGS   += -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
+                   -ftree-loop-im -fivopts -funswitch-loops -funroll-loops -floop-strip-mine
+# Modulo scheduling
+KBUILD_CFLAGS   += -fmodulo-sched -fmodulo-sched-allow-regmoves
+# GCC extras
+KBUILD_CFLAGS   += -fgcse-sm -fgcse-las -fsched-spec-load -fsched-pressure \
+                   -fsched-stalled-insns=0 -fsched-stalled-insns-dep=0 -fipa-matrix-reorg
+# GCC params
+KBUILD_CFLAGS   += --param max-gcse-memory=1073741824 \
+                   --param max-gcse-insertion-ratio=50 \
+                   --param max-tail-merge-comparisons=100 \
+                   --param max-tail-merge-iterations=4 \
+                   --param l1-cache-size=16 \
+                   --param l2-cache-size=1024 \
+                   --param max-vartrack-size=0
 endif
-KBUILD_CFLAGS	+= $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD)
-else
-KBUILD_CFLAGS	+= -Os
-CFLAGS_A15	= -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp -march=armv7-a
-CFLAGS_GR	= -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
-		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las
-CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
-CFLAGS_A15	= -marm -mtune=cortex-a15 -march=armv7-a \
-		  -ftree-loop-im -fivopts -fgcse-sm -fgcse-las \
-		  -fsched-spec-load -fsched-pressure -fsched-stalled-insns=0 \
-		  -fsched-stalled-insns-dep=0 -fipa-pta
-CFLAGS_GR	= -fgraphite-identity -floop-block -ftree-loop-linear \
-		  -ftree-loop-distribution
-CFLAGS_MOD	= -fmodulo-sched -fmodulo-sched-allow-regmoves
-CFLAGS_SCARY	= --param max-gcse-memory=1073741824 \
-		  --param max-gcse-insertion-ratio=50 \
-		  --param max-tail-merge-comparisons=100 \
-		  --param max-tail-merge-iterations=4 \
-		  --param l1-cache-size=16 \
-		  --param l2-cache-size=1024 \
-		  --param max-vartrack-size=0
-
-KBUILD_CFLAGS	+= $(CFLAGS_A15) $(CFLAGS_GR) $(CFLAGS_MOD) $(CFLAGS_SCARY)
+# ipa-pta only makes sense with LTO
+ifdef CONFIG_LTO
+KBUILD_CFLAGS	+= -fipa-pta
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,9 +22,9 @@
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/types.h>
+#include <linux/workqueue.h>
 #include <mach/msm_iomap.h>
 #include <mach/socinfo.h>
-#include <linux/spinlock.h>
 
 #define DRIVER_NAME "msm_rng"
 
@@ -73,7 +73,7 @@ static int msm_rng_read(struct hwrng *rng, void *data, size_t max, bool wait)
 		return 0;
 
 	/* enable PRNG clock */
-	ret = clk_enable(msm_rng_dev->prng_clk);
+	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to enable clock in callback\n");
 		return 0;
@@ -100,7 +100,7 @@ static int msm_rng_read(struct hwrng *rng, void *data, size_t max, bool wait)
 	} while (currsize < maxsize);
 
 	/* vote to turn off clock */
-	clk_disable(msm_rng_dev->prng_clk);
+	clk_disable_unprepare(msm_rng_dev->prng_clk);
 
 	return currsize;
 }
@@ -113,37 +113,55 @@ static struct hwrng msm_rng = {
 /* Implement arch_get_random_TYPE.  Precache data to avoid toggling the hwrng
  * clock every call.
  */
+static int dummy_random(void *data, size_t size) { return 0; }
+static int (*random_func)(void *, size_t) = dummy_random;
 #define RANDBUF_SIZE 512
 static void *randbuf;
 static int randbuf_bytes;
 static DEFINE_SPINLOCK(randbuf_lock);
+static struct work_struct randbuf_work;
+static void do_randbuf_fill(struct work_struct *work) {
+	unsigned long flags;
+	int bytes = RANDBUF_SIZE - randbuf_bytes;
+	int read;
+	void *buf = kmalloc(bytes, GFP_KERNEL);
+	if (!buf) return;
+
+	read = msm_rng_read(&msm_rng, buf, bytes, 0);
+
+	if (likely(read >= randbuf_bytes)) {
+		memmove(randbuf + read, randbuf, randbuf_bytes);
+		spin_lock_irqsave(&randbuf_lock, flags);
+	} else {
+		spin_lock_irqsave(&randbuf_lock, flags);
+		memmove(randbuf + read, randbuf, randbuf_bytes);
+	}
+	memcpy(randbuf, buf, read);
+	randbuf_bytes += read;
+	spin_unlock_irqrestore(&randbuf_lock, flags);
+
+	kfree(buf);
+}
 static int msm_get_random_bytes(void *data, size_t size) {
 	unsigned long flags;
 	spin_lock_irqsave(&randbuf_lock, flags);
+	if (randbuf_bytes < RANDBUF_SIZE / 4 && !work_pending(&randbuf_work))
+		schedule_work(&randbuf_work);
 	if (randbuf_bytes < size) {
-		if (!msm_rng.priv || !randbuf) {
-			spin_unlock_irqrestore(&randbuf_lock, flags);
-			printk(KERN_WARNING "msm_rng: not initialized correctly\n");
-			return 0;
-		}
-		randbuf_bytes += msm_rng_read(&msm_rng, randbuf + randbuf_bytes,
-			RANDBUF_SIZE - randbuf_bytes, 0);
-		if (randbuf_bytes < size) {
-			spin_unlock_irqrestore(&randbuf_lock, flags);
-			return 0;
-		}
+		spin_unlock_irqrestore(&randbuf_lock, flags);
+		return 0;
 	}
-	memcpy(data, randbuf + randbuf_bytes - size, size);
 	randbuf_bytes -= size;
+	memcpy(data, randbuf + randbuf_bytes, size);
 	spin_unlock_irqrestore(&randbuf_lock, flags);
 	return size;
 }
 int arch_get_random_long(unsigned long *v) {
-	return msm_get_random_bytes((void *)v, sizeof(unsigned long));
+	return random_func((void *)v, sizeof(unsigned long));
 }
 EXPORT_SYMBOL(arch_get_random_long);
 int arch_get_random_int(unsigned int *v) {
-	return msm_get_random_bytes((void *)v, sizeof(unsigned int));
+	return random_func((void *)v, sizeof(unsigned int));
 }
 EXPORT_SYMBOL(arch_get_random_int);
 
@@ -154,7 +172,7 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 	int ret = 0;
 
 	/* Enable the PRNG CLK */
-	ret = clk_enable(msm_rng_dev->prng_clk);
+	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&(msm_rng_dev->pdev)->dev,
 				"failed to enable clock in probe\n");
@@ -165,9 +183,9 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 					PRNG_HW_ENABLE;
 	/* PRNG H/W is not ON */
 	if (val != PRNG_HW_ENABLE) {
-		val = readl_relaxed(msm_rng_dev->base + PRNG_LFSR_CFG_OFFSET) &
-					PRNG_LFSR_CFG_MASK;
-		val |= PRNG_LFSR_CFG_MASK;
+		val = readl_relaxed(msm_rng_dev->base + PRNG_LFSR_CFG_OFFSET);
+		val &= PRNG_LFSR_CFG_MASK;
+		val |= PRNG_LFSR_CFG_CLOCKS;
 		writel_relaxed(val, msm_rng_dev->base + PRNG_LFSR_CFG_OFFSET);
 
 		/* The PRNG CONFIG register should be first written */
@@ -184,10 +202,13 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 		mb();
 	}
 
-	clk_disable(msm_rng_dev->prng_clk);
+	clk_disable_unprepare(msm_rng_dev->prng_clk);
 
 	return 0;
 }
+
+/* Seed erandom's pool */
+void __init init_rand_state(void);
 
 static int __devinit msm_rng_probe(struct platform_device *pdev)
 {
@@ -245,6 +266,20 @@ static int __devinit msm_rng_probe(struct platform_device *pdev)
 		goto rollback_clk;
 	}
 
+#ifdef CONFIG_ARCH_RANDOM_HWRNG
+	/* Init the arch_random bits */
+	randbuf = kmalloc(RANDBUF_SIZE, GFP_KERNEL);
+	if (randbuf) {
+		randbuf_bytes = msm_rng_read(&msm_rng, randbuf, RANDBUF_SIZE, 0);
+		INIT_WORK(&randbuf_work, do_randbuf_fill);
+		random_func = msm_get_random_bytes;
+	} else {
+		printk(KERN_WARNING "msm_rng: can't allocate buffer\n");
+	}
+
+	init_rand_state();
+#endif
+
 	return 0;
 
 rollback_clk:
@@ -269,21 +304,24 @@ static int __devexit msm_rng_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static struct of_device_id qrng_match[] = {
+	{	.compatible = "qcom,msm-rng",
+	},
+	{}
+};
+
 static struct platform_driver rng_driver = {
 	.probe      = msm_rng_probe,
 	.remove     = __devexit_p(msm_rng_remove),
 	.driver     = {
 		.name   = DRIVER_NAME,
 		.owner  = THIS_MODULE,
+		.of_match_table = qrng_match,
 	}
 };
 
 static int __init msm_rng_init(void)
 {
-	randbuf = kmalloc(RANDBUF_SIZE, GFP_KERNEL);
-	if (!randbuf) {
-		printk(KERN_WARNING "msm_rng: can't allocate buffer\n");
-	}
 	return platform_driver_register(&rng_driver);
 }
 
@@ -296,6 +334,6 @@ static void __exit msm_rng_exit(void)
 
 module_exit(msm_rng_exit);
 
-MODULE_AUTHOR("Code Aurora Forum");
+MODULE_AUTHOR("The Linux Foundation");
 MODULE_DESCRIPTION("Qualcomm MSM Random Number Driver");
 MODULE_LICENSE("GPL v2");

@@ -323,7 +323,7 @@ static int trickle_thresh __read_mostly = INPUT_POOL_WORDS * 28;
 static int random_depletions = 0;
 
 /* Erandom stuff */
-static void init_rand_state(void);
+void init_rand_state(void);
 static void erandom_get_random_bytes(char *buf, size_t count);
 static DEFINE_SPINLOCK(erandom_lock);
 static unsigned int erandom_bytes_read = 0;
@@ -475,7 +475,6 @@ struct entropy_store {
 
 static __u32 input_pool_data[INPUT_POOL_WORDS];
 static __u32 blocking_pool_data[OUTPUT_POOL_WORDS];
-static __u32 nonblocking_pool_data[OUTPUT_POOL_WORDS];
 
 static struct entropy_store input_pool = {
 	.poolinfo = &poolinfo_table[0],
@@ -492,14 +491,6 @@ static struct entropy_store blocking_pool = {
 	.pull = &input_pool,
 	.lock = __SPIN_LOCK_UNLOCKED(&blocking_pool.lock),
 	.pool = blocking_pool_data
-};
-
-static struct entropy_store nonblocking_pool = {
-	.poolinfo = &poolinfo_table[1],
-	.name = "nonblocking",
-	.pull = &input_pool,
-	.lock = __SPIN_LOCK_UNLOCKED(&nonblocking_pool.lock),
-	.pool = nonblocking_pool_data
 };
 
 static __u32 const twist_table[8] = {
@@ -572,7 +563,6 @@ static void _mix_pool_bytes(struct entropy_store *r, const void *in,
 static void __mix_pool_bytes(struct entropy_store *r, const void *in,
 			     int nbytes, __u8 out[64])
 {
-	//trace_mix_pool_bytes_nolock(r->name, nbytes, _RET_IP_);
 	_mix_pool_bytes(r, in, nbytes, out);
 }
 
@@ -581,7 +571,6 @@ static void mix_pool_bytes(struct entropy_store *r, const void *in,
 {
 	unsigned long flags;
 
-	//trace_mix_pool_bytes(r->name, nbytes, _RET_IP_);
 	spin_lock_irqsave(&r->lock, flags);
 	_mix_pool_bytes(r, in, nbytes, out);
 	spin_unlock_irqrestore(&r->lock, flags);
@@ -646,9 +635,6 @@ retry:
 			r->initialized = 1;
 	}
 
-	//trace_credit_entropy_bits(r->name, nbits, entropy_count,
-				  //r->entropy_total, _RET_IP_);
-
 	/* should we wake readers? */
 	if (r == &input_pool && entropy_count >= random_read_wakeup_thresh) {
 		wake_up_interruptible(&random_read_wait);
@@ -683,8 +669,6 @@ void add_device_randomness(const void *buf, unsigned int size)
 
 	mix_pool_bytes(&input_pool, buf, size, NULL);
 	mix_pool_bytes(&input_pool, &time, sizeof(time), NULL);
-	mix_pool_bytes(&nonblocking_pool, buf, size, NULL);
-	mix_pool_bytes(&nonblocking_pool, &time, sizeof(time), NULL);
 }
 EXPORT_SYMBOL(add_device_randomness);
 
@@ -779,7 +763,6 @@ static DEFINE_PER_CPU(struct fast_pool, irq_randomness);
 
 void add_interrupt_randomness(int irq)
 {
-	struct entropy_store	*r;
 	struct fast_pool	*fast_pool = &__get_cpu_var(irq_randomness);
 	struct pt_regs		*regs = get_irq_regs();
 	unsigned long		now = jiffies;
@@ -801,9 +784,8 @@ void add_interrupt_randomness(int irq)
 
 	fast_pool->last = now;
 
-	r = nonblocking_pool.initialized ? &input_pool : &nonblocking_pool;
-	__mix_pool_bytes(r, &fast_pool->pool, sizeof(fast_pool->pool), NULL);
-	credit_entropy_bits(r, 1);
+	__mix_pool_bytes(&input_pool, &fast_pool->pool, sizeof(fast_pool->pool), NULL);
+	credit_entropy_bits(&input_pool, 1);
 }
 
 #ifdef CONFIG_BLOCK
@@ -978,7 +960,6 @@ static ssize_t extract_entropy(struct entropy_store *r, void *buf,
 	ssize_t ret = 0, i;
 	__u8 tmp[EXTRACT_SIZE];
 
-	//trace_extract_entropy(r->name, nbytes, r->entropy_count, _RET_IP_);
 	xfer_secondary_pool(r, nbytes);
 	nbytes = account(r, nbytes, min, reserved);
 
@@ -1013,7 +994,6 @@ static ssize_t extract_entropy_user(struct entropy_store *r, void __user *buf,
 	ssize_t ret = 0, i;
 	__u8 tmp[EXTRACT_SIZE];
 
-	//trace_extract_entropy_user(r->name, nbytes, r->entropy_count, _RET_IP_);
 	xfer_secondary_pool(r, nbytes);
 	nbytes = account(r, nbytes, 0, 0);
 
@@ -1051,10 +1031,19 @@ static ssize_t extract_entropy_user(struct entropy_store *r, void __user *buf,
  * TCP sequence numbers, etc.  It does not use the hw random number
  * generator, if available; use get_random_bytes_arch() for that.
  */
-void get_random_bytes(void *buf, int nbytes)
+static void dummy_random(void *buf, int nbytes)
 {
-	erandom_get_random_bytes(buf, nbytes);
+	ssize_t i;
+	__u8 tmp[EXTRACT_SIZE];
+	while (nbytes) {
+		extract_buf(&blocking_pool, tmp);
+		i = min_t(int, nbytes, EXTRACT_SIZE);
+		memcpy(buf, tmp, i);
+		buf += i;
+		nbytes -= i;
+	}
 }
+void (*get_random_bytes)(void *, int) = dummy_random;
 EXPORT_SYMBOL(get_random_bytes);
 
 /*
@@ -1071,7 +1060,6 @@ void get_random_bytes_arch(void *buf, int nbytes)
 {
 	char *p = buf;
 
-	//trace_get_random_bytes(nbytes, _RET_IP_);
 	while (nbytes) {
 		unsigned long v;
 		int chunk = min(nbytes, (int)sizeof(unsigned long));
@@ -1085,7 +1073,7 @@ void get_random_bytes_arch(void *buf, int nbytes)
 	}
 
 	if (nbytes)
-		extract_entropy(&nonblocking_pool, p, nbytes, 0, 0);
+		get_random_bytes(p, nbytes);
 }
 EXPORT_SYMBOL(get_random_bytes_arch);
 
@@ -1130,11 +1118,12 @@ static int rand_initialize(void)
 {
 	init_std_data(&input_pool);
 	init_std_data(&blocking_pool);
-	init_std_data(&nonblocking_pool);
+#ifndef CONFIG_ARCH_RANDOM_HWRNG
 	init_rand_state();
+#endif
 	return 0;
 }
-module_init(rand_initialize);
+core_initcall(rand_initialize);
 
 #ifdef CONFIG_BLOCK
 void rand_initialize_disk(struct gendisk *disk)
@@ -1159,11 +1148,11 @@ static inline void swap_byte(u8 *a, u8 *b) {
 	*b = swapByte;
 }
 
-static void init_rand_state(void) {
+void init_rand_state(void) {
 	unsigned int k;
 	u8 seed[256];
 
-	get_random_bytes_arch(&seed, 256);
+	get_random_bytes_arch(seed, 256);
 
 	for (k=0; k<256; k++)
 		erandom_S[k] = k;
@@ -1183,17 +1172,20 @@ static void init_rand_state(void) {
 		erandom_j = (erandom_j + erandom_S[erandom_i]) & 0xff;
 		swap_byte(&erandom_S[erandom_i], &erandom_S[erandom_j]);
 	}
+
+	/* Actually enable erandom */
+	get_random_bytes = erandom_get_random_bytes;
 }
 
-static void _erandom_get_random_bytes(char *buf, size_t count) {
-	int k;
+static void _erandom_get_random_bytes(u8 *buf, size_t count) {
+	size_t k;
 	long unsigned int v;
 
 	for (k=0; k<count; k++) {
 		erandom_i = (erandom_i + 1) & 0xff;
 		erandom_j = (erandom_j + erandom_S[erandom_i]) & 0xff;
 		swap_byte(&erandom_S[erandom_i], &erandom_S[erandom_j]);
-		*buf++ = erandom_S[(erandom_S[erandom_i] + erandom_S[erandom_j]) & 0xff];
+		buf[k] = erandom_S[(erandom_S[erandom_i] + erandom_S[erandom_j]) & 0xff];
 	}
 
 	/* RC4 is known to be predictable and to occasionally have very short
@@ -1210,10 +1202,10 @@ static void _erandom_get_random_bytes(char *buf, size_t count) {
 	}
 }
 
-static void erandom_get_random_bytes(char *buf, size_t count) {
+static inline void erandom_get_random_bytes(char *buf, size_t count) {
 	unsigned long flags;
 	spin_lock_irqsave(&erandom_lock, flags);
-	_erandom_get_random_bytes(buf, count);
+	_erandom_get_random_bytes((u8 *)buf, count);
 	spin_unlock_irqrestore(&erandom_lock, flags);
 }
 
@@ -1222,7 +1214,7 @@ erandom_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos) {
 	u8 tmp[16];
 	int m;
 	unsigned long flags;
-	ssize_t ret = nbytes;
+	ssize_t ret = 0;
 
 	spin_lock_irqsave(&erandom_lock, flags);
 
@@ -1240,12 +1232,11 @@ erandom_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos) {
 		}
 
 		_erandom_get_random_bytes(tmp, m);
-		if (copy_to_user(buf, tmp, m)) {
-			ret = -EFAULT;
+		if (copy_to_user(buf, tmp, m))
 			break;
-		}
 
 		nbytes -= m;
+		ret += m;
 		buf += m;
 	}
 
@@ -1352,9 +1343,6 @@ static ssize_t random_write(struct file *file, const char __user *buffer,
 	size_t ret;
 
 	ret = write_pool(&blocking_pool, buffer, count);
-	if (ret)
-		return ret;
-	ret = write_pool(&nonblocking_pool, buffer, count);
 	if (ret)
 		return ret;
 
@@ -1565,15 +1553,6 @@ ctl_table random_table[] = {
 };
 #endif 	/* CONFIG_SYSCTL */
 
-static u32 random_int_secret[MD5_MESSAGE_BYTES / 4] ____cacheline_aligned;
-
-static int __init random_int_secret_init(void)
-{
-	get_random_bytes(random_int_secret, sizeof(random_int_secret));
-	return 0;
-}
-late_initcall(random_int_secret_init);
-
 /*
  * Get a random word for internal kernel use only. Similar to urandom but
  * with the goal of minimal entropy pool depletion. As a result, the random
@@ -1582,7 +1561,7 @@ late_initcall(random_int_secret_init);
  */
 unsigned int get_random_int(void) {
 	unsigned int ret;
-	erandom_get_random_bytes((char *)&ret, sizeof(ret));
+	get_random_bytes((u8 *)&ret, sizeof(ret));
 	return ret;
 }
 

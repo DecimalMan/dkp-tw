@@ -54,7 +54,8 @@ extern void add_input_randomness(unsigned int type, unsigned int code,
 				 unsigned int value);
 extern void add_interrupt_randomness(int irq);
 
-extern void get_random_bytes(void *buf, int nbytes);
+extern void (*get_random_bytes)(void *buf, int nbytes);
+extern void get_random_bytes_arch(void *buf, int nbytes);
 void generate_random_uuid(unsigned char uuid_out[16]);
 
 #ifndef MODULE
@@ -91,9 +92,22 @@ static inline void prandom32_seed(struct rnd_state *state, u64 seed)
 	state->s3 = __seed(i, 15);
 }
 
+#ifdef CONFIG_ARCH_RANDOM
+# include <asm/archrandom.h>
+#else
 #ifdef CONFIG_ARCH_RANDOM_HWRNG
 extern int arch_get_random_long(unsigned long *v);
 extern int arch_get_random_int(unsigned int *v);
+#else
+static inline int arch_get_random_long(unsigned long *v)
+{
+	return 0;
+}
+static inline int arch_get_random_int(unsigned int *v)
+{
+	return 0;
+}
+#endif
 #endif
 
 #endif /* __KERNEL___ */

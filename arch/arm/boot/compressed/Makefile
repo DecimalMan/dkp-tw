@@ -7,6 +7,10 @@
 OBJS		=
 plus_sec	:= $(call as-instr,.arch_extension sec,+sec)
 
+# This works, but it's a bit heavy-handed
+#EXTRA_CFLAGS	+= -fno-unroll-loops -fno-unswitch-loops -Os -fno-ipa-pta \
+		   -fno-loop-strip-mine -fno-ipa-matrix-reorg -fno-sched-spec-load
+
 # Ensure that mmcif loader code appears early in the image
 # to minimise that number of bocks that have to be read in
 # order to load it.
@@ -24,9 +28,10 @@ AFLAGS_lib1funcs.o += -Wa,-march=armv7-a$(plus_sec)
 AFLAGS_ashldi3.o += -Wa,-march=armv7-a$(plus_sec)
 
 # Make sure we can use these during final link
-CFLAGS_misc.o += -ffat-lto-objects
-CFLAGS_decompress.o += -ffat-lto-objects
-CFLAGS_string.o += -ffat-lto-objects
+FIXIFY := -ffat-lto-objects -Os
+CFLAGS_misc.o += $(FIXIFY)
+CFLAGS_decompress.o += $(FIXIFY)
+CFLAGS_string.o += $(FIXIFY)
 
 HEAD	= head.o
 OBJS	+= misc.o decompress.o
