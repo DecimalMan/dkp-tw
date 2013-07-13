@@ -109,13 +109,8 @@ static void cypress_touchkey_late_resume(struct early_suspend *h);
 static int touchkey_led_status;
 static int touchled_cmd_reversed;
 
-/* CONFIG_INTERACTION_HINTS stuff */
 #ifdef CONFIG_INTERACTION_HINTS
 static int current_pressed;
-static struct work_struct interaction_work;
-static void do_interaction(struct work_struct *work) {
-	cpufreq_set_interactivity(!!current_pressed, INTERACT_ID_SOFTKEY);
-}
 #endif
 
 static void cypress_touchkey_led_work(struct work_struct *work)
@@ -258,7 +253,7 @@ static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
 #ifdef CONFIG_INTERACTION_HINTS
 		if (press) current_pressed |= 1 << code;
 		else current_pressed &= ~(1 << code);
-		schedule_work(&interaction_work);
+		cpufreq_set_interactivity(current_pressed, INTERACT_ID_SOFTKEY);
 #endif
 	}
 
@@ -876,10 +871,6 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 		dev_err(&client->dev, "fail to allocate input device.\n");
 		goto err_input_dev_alloc;
 	}
-
-#ifdef CONFIG_INTERACTION_HINTS
-	INIT_WORK(&interaction_work, do_interaction);
-#endif
 
 	info->client = client;
 	info->input_dev = input_dev;

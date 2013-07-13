@@ -29,6 +29,7 @@
 #include <linux/completion.h>
 #include <linux/mutex.h>
 #include <linux/syscore_ops.h>
+#include <linux/sched.h>
 #include <linux/dkp.h>
 
 #include <trace/events/power.h>
@@ -481,17 +482,20 @@ static ssize_t store_##file_name					\
 	return ret ? ret : count;					\
 }
 
-#ifdef CONFIG_SEC_DVFS
 static ssize_t store_scaling_min_freq
 (struct cpufreq_policy *policy, const char *buf, size_t count)
 {
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
+#ifndef CONFIG_SEC_DVFS
+	struct cpufreq_policy new_policy;
+#endif
 
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
 		return -EINVAL;
 
+#ifdef CONFIG_SEC_DVFS
 	if (policy->cpu == BOOT_CPU) {
 		if (value <= MIN_FREQ_LIMIT)
 			cpufreq_set_limit_defered(USER_MIN_STOP, value);
@@ -500,7 +504,20 @@ static ssize_t store_scaling_min_freq
 	}
 
 	return count;
+#else
+	ret = cpufreq_get_policy(&new_policy, policy->cpu);
+	if (ret)
+		return -EINVAL;
+
+	policy->min = value;
+
+	ret = __cpufreq_set_policy(policy, &new_policy);
+	policy->user_policy.min = policy->min;
+
+	return ret ? ret : count;
+#endif
 }
+
 
 static struct freq_work_struct {
 	struct work_struct work;
@@ -527,6 +544,9 @@ static ssize_t store_scaling_max_freq
 {
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
+#ifndef CONFIG_SEC_DVFS
+	struct cpufreq_policy new_policy;
+#endif
 
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
@@ -538,6 +558,7 @@ static ssize_t store_scaling_max_freq
 		schedule_work((struct work_struct *) &enable_oc_work);
 	}
 
+#ifdef CONFIG_SEC_DVFS
 	if (policy->cpu == BOOT_CPU) {
 		if (value >= MAX_FREQ_LIMIT)
 			cpufreq_set_limit_defered(USER_MAX_STOP, value);
@@ -546,11 +567,19 @@ static ssize_t store_scaling_max_freq
 	}
 
 	return count;
-}
 #else
-store_one(scaling_min_freq, min);
-store_one(scaling_max_freq, max);
+	ret = cpufreq_get_policy(&new_policy, policy->cpu);
+	if (ret)
+		return -EINVAL;
+
+	policy->max = value;
+
+	ret = __cpufreq_set_policy(policy, &new_policy);
+	policy->user_policy.max = policy->max;
+
+	return ret ? ret : count;
 #endif
+}
 
 /**
  * show_cpuinfo_cur_freq - current CPU frequency as detected by hardware
@@ -2080,6 +2109,80 @@ error_out:
 	return ret;
 }
 
+#ifdef CONFIG_INTERACTION_HINTS
+static atomic_t interactivity_state;
+
+static void do_interactivity(struct work_struct *work);
+static DECLARE_WORK(interactivity_on_work, do_interactivity);
+static DECLARE_WORK(interactivity_off_work, do_interactivity);
+
+static void do_interactivity(struct work_struct *work) {
+	unsigned int j;
+
+	for_each_online_cpu(j) {
+		struct cpufreq_policy *pol;
+		if (lock_policy_rwsem_read(j))
+			continue;
+		pol = per_cpu(cpufreq_cpu_data, j);
+		if (unlikely(pol == NULL)) {
+			printk(KERN_DEBUG "%s: policy for cpu %u is null\n", __func__, j);
+		} else {
+			pol->governor->governor(pol,
+				work == &interactivity_on_work ?
+				CPUFREQ_GOV_INTERACT : CPUFREQ_GOV_NOINTERACT);
+		}
+		unlock_policy_rwsem_read(j);
+	}
+}
+
+void cpufreq_set_interactivity(int on, int idbit) {
+#if 0
+	unsigned long flags;
+	spin_lock_irqsave(&interactivity_lock, flags);
+
+	if (on) {
+		int oldstate;
+		oldstate = interactivity_state;
+		interactivity_state |= 1 << idbit;
+		if (oldstate) goto out;
+	} else {
+		interactivity_state &= ~(1 << idbit);
+		if (interactivity_state) goto out;
+	}
+
+/*
+	if (!work_pending(&interactivity_work))
+		schedule_work(&interactivity_work);
+*/
+
+out:
+	spin_unlock_irqrestore(&interactivity_lock, flags);
+#else
+	unsigned int mask = 1 << idbit;
+	int old, new;
+	unsigned long tmp;
+	__asm__ __volatile__(
+"1:	ldrex	%0, [%4]\n"
+"	mov	%1, %0\n"
+"	teq	%4, #0\n"
+"	orrne	%0, %5\n"
+"	biceq	%0, %5\n"
+"	strex	%2, %0, [%4]\n"
+"	teq	%2, #0\n"
+"	bne	1b"
+	: "=r" (new), "=r" (old), "=&r" (tmp), "+Qo" (interactivity_state.counter)
+	: "r" (&interactivity_state.counter), "lr" (on), "lr" (mask)
+	: "cc");
+
+	if (!old && new) {
+		schedule_work(&interactivity_on_work);
+	} else if (old && !new) {
+		schedule_work(&interactivity_off_work);
+	}
+#endif
+}
+#endif
+
 #ifdef CONFIG_SEC_DVFS
 struct cpufreq_queue_data {
 	unsigned int flag;
@@ -2098,40 +2201,6 @@ static unsigned int app_min_freq_limit = MIN_FREQ_LIMIT;
 static unsigned int app_max_freq_limit = MAX_FREQ_LIMIT;
 static unsigned int user_min_freq_limit = MIN_FREQ_LIMIT;
 static unsigned int user_max_freq_limit = MAX_FREQ_LIMIT;
-
-#ifdef CONFIG_INTERACTION_HINTS
-/* Notify governors of touch immediately.
- * This may block while mutexes are locked.
- */
-void cpufreq_set_interactivity(int on, int idbit) {
-	unsigned int j;
-	static int pressids = 0;
-	/* Filter events so we don't grab mutexes all over the place */
-	if (on) {
-		int oldids;
-		oldids = pressids;
-		pressids |= 1 << idbit;
-		if (oldids) return;
-	} else {
-		pressids &= ~(1 << idbit);
-		if (pressids) return;
-	}
-	/* Inform all available policies */
-	for_each_online_cpu(j) {
-		struct cpufreq_policy *pol;
-		pol = per_cpu(cpufreq_cpu_data, j);
-		if (pol == NULL) {
-			printk(KERN_DEBUG "policy for cpu %u is null\n", j);
-			continue;
-		}
-		/* Call governor directly, without __cpufreq_governor()'s
-		 * initializing stuff that doesn't apply here.
-		 */
-		pol->governor->governor(pol,
-			pressids ? CPUFREQ_GOV_INTERACT : CPUFREQ_GOV_NOINTERACT);
-	}
-}
-#endif
 
 static int cpufreq_set_limits_off
 	(int cpu, unsigned int min, unsigned int max)
