@@ -227,10 +227,6 @@ config CPU_FREQ_GOV_FREELUNCH
 	tristate "'freelunch' cpufreq governor"
 	depends on CPU_FREQ
 
-config CPU_FREQ_GOV_NANOLUNCH
-	tristate "'nanolunch' cpufreq governor"
-	depends on CPU_FREQ
-
 config CPU_FREQ_GOV_ASSWAX
         tristate "'asswax' cpufreq governor"
         depends on CPU_FREQ
