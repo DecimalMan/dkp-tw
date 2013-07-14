@@ -907,60 +907,6 @@ no_policy:
 
 extern void msm_rq_stats_enable(int enable);
 
-#if 0
-static ssize_t store(struct kobject *kobj, struct attribute *attr,
-		     const char *buf, size_t count)
-{
-	struct cpufreq_policy *policy = to_policy(kobj);
-	struct freq_attr *fattr = to_attr(attr);
-	ssize_t ret = -EINVAL;
-#ifdef __CPUFREQ_KOBJ_DEL_DEADLOCK_FIX
-	unsigned int cpu;
-	unsigned long flags;
-#endif
-
-#ifdef __CPUFREQ_KOBJ_DEL_DEADLOCK_FIX
-	spin_lock_irqsave(&cpufreq_driver_lock, flags);
-	policy = cpufreq_cpu_peek(policy->cpu);
-	if (!policy) {
-		spin_unlock_irqrestore(&cpufreq_driver_lock, flags);
-		return -EINVAL;
-	}
-	cpu = policy->cpu;
-	if (mutex_trylock(&per_cpu(cpufreq_remove_mutex, cpu)) == 0) {
-		spin_unlock_irqrestore(&cpufreq_driver_lock, flags);
-		pr_info("!WARN %s failed because cpu%u is going down\n",
-			__func__, cpu);
-		return -EINVAL;
-	}
-	spin_unlock_irqrestore(&cpufreq_driver_lock, flags);
-#endif
-	policy = cpufreq_cpu_get_sysfs(policy->cpu);
-	if (!policy)
-		goto no_policy;
-
-	if (lock_policy_rwsem_write(policy->cpu) < 0)
-		goto fail;
-
-	if (fattr->store)
-		ret = fattr->store(policy, buf, count);
-	else
-		ret = -EIO;
-
-	unlock_policy_rwsem_write(policy->cpu);
-fail:
-	cpufreq_cpu_put_sysfs(policy);
-no_policy:
-#ifdef __CPUFREQ_KOBJ_DEL_DEADLOCK_FIX
-	mutex_unlock(&per_cpu(cpufreq_remove_mutex, cpu));
-#endif
-	return ret;
-}
-#endif
-
-/* I can't be bothered to deal with the kobj removal hack.  This is safe enough
- * 99% of the time.
- */
 static ssize_t store(struct kobject *kobj, struct attribute *attr,
 		     const char *buf, size_t count)
 {
@@ -2136,50 +2082,29 @@ static void do_interactivity(struct work_struct *work) {
 }
 
 void cpufreq_set_interactivity(int on, int idbit) {
-#if 0
-	unsigned long flags;
-	spin_lock_irqsave(&interactivity_lock, flags);
-
-	if (on) {
-		int oldstate;
-		oldstate = interactivity_state;
-		interactivity_state |= 1 << idbit;
-		if (oldstate) goto out;
-	} else {
-		interactivity_state &= ~(1 << idbit);
-		if (interactivity_state) goto out;
-	}
-
-/*
-	if (!work_pending(&interactivity_work))
-		schedule_work(&interactivity_work);
-*/
-
-out:
-	spin_unlock_irqrestore(&interactivity_lock, flags);
-#else
 	unsigned int mask = 1 << idbit;
 	int old, new;
-	unsigned long tmp;
+	{
+	register unsigned long tmp;
 	__asm__ __volatile__(
 "1:	ldrex	%0, [%4]\n"
 "	mov	%1, %0\n"
-"	teq	%4, #0\n"
-"	orrne	%0, %5\n"
-"	biceq	%0, %5\n"
+"	teq	%5, #0\n"
+"	orrne	%0, %6\n"
+"	biceq	%0, %6\n"
 "	strex	%2, %0, [%4]\n"
 "	teq	%2, #0\n"
 "	bne	1b"
 	: "=r" (new), "=r" (old), "=&r" (tmp), "+Qo" (interactivity_state.counter)
 	: "r" (&interactivity_state.counter), "lr" (on), "lr" (mask)
 	: "cc");
+	}
 
 	if (!old && new) {
 		schedule_work(&interactivity_on_work);
 	} else if (old && !new) {
 		schedule_work(&interactivity_off_work);
 	}
-#endif
 }
 #endif
 
