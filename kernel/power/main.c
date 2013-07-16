@@ -14,10 +14,9 @@
 #include <linux/workqueue.h>
 
 #include "power.h"
-#ifdef CONFIG_SEC_DVFS
 #include <linux/cpufreq.h>
 #include <linux/rq_stats.h>
-#endif
+#include <linux/dkp.h>
 
 DEFINE_MUTEX(pm_mutex);
 
@@ -474,6 +473,15 @@ static ssize_t cpufreq_max_limit_store(struct kobject *kobj,
 	}
 	return n;
 }
+
+power_attr(cpufreq_max_limit);
+power_attr(cpufreq_min_limit);
+#else
+// Dummy attributes
+static int cpufreq_min_limit, cpufreq_max_limit;
+static __DKP(cpufreq_min_limit, -1, MAX_FREQ_LIMIT, NULL);
+static __DKP(cpufreq_max_limit, -1, MAX_FREQ_LIMIT, NULL);
+#endif
 static ssize_t cpufreq_table_show(struct kobject *kobj,
 			struct kobj_attribute *attr, char *buf)
 {
@@ -511,10 +519,7 @@ static ssize_t cpufreq_table_store(struct kobject *kobj,
 	return n;
 }
 
-power_attr(cpufreq_max_limit);
-power_attr(cpufreq_min_limit);
 power_attr(cpufreq_table);
-#endif
 
 static struct attribute * g[] = {
 	&state_attr.attr,
@@ -536,8 +541,11 @@ static struct attribute * g[] = {
 #ifdef CONFIG_SEC_DVFS
 	&cpufreq_min_limit_attr.attr,
 	&cpufreq_max_limit_attr.attr,
-	&cpufreq_table_attr.attr,
+#else
+	&dkp_attr(cpufreq_min_limit),
+	&dkp_attr(cpufreq_max_limit),
 #endif
+	&cpufreq_table_attr.attr,
 	NULL,
 };
 
