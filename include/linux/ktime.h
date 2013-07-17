@@ -58,6 +58,8 @@ union ktime {
 
 typedef union ktime ktime_t;		/* Kill this */
 
+extern ktime_t get_idle_ktime(unsigned int cpu);
+
 #define KTIME_MAX			((s64)~((u64)1 << 63))
 #if (BITS_PER_LONG == 64)
 # define KTIME_SEC_MAX			(KTIME_MAX / NSEC_PER_SEC)
