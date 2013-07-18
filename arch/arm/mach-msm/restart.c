@@ -344,6 +344,8 @@ static struct notifier_block dload_reboot_block = {
 #ifdef CONFIG_KEXEC_HARDBOOT
 void msm_kexec_hardboot(void)
 {
+	/* Clear the reset flag */
+	__raw_writel(0x12345678, restart_reason);
 	/* Set PM8XXX PMIC to reset on power off. */
 	pm8xxx_reset_pwr_off(1);
 }
