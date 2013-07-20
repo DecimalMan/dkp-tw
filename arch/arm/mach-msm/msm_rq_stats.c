@@ -383,7 +383,7 @@ static int __init msm_rq_stats_init(void)
 
 	INIT_DELAYED_WORK_DEFERRABLE(&mpd_work, do_hotplug_enable);
 
-	rq_info.init = 1;
+	rq_info.init = 0;
 	return ret;
 }
 late_initcall(msm_rq_stats_init);
