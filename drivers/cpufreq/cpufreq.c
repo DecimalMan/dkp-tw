@@ -482,6 +482,9 @@ static ssize_t store_##file_name					\
 	return ret ? ret : count;					\
 }
 
+static int dont_touch_my_shit = 0;
+static __DKP(dont_touch_my_shit, 0, 1, NULL);
+
 static ssize_t store_scaling_min_freq
 (struct cpufreq_policy *policy, const char *buf, size_t count)
 {
@@ -490,6 +493,13 @@ static ssize_t store_scaling_min_freq
 #ifndef CONFIG_SEC_DVFS
 	struct cpufreq_policy new_policy;
 #endif
+
+	if (dont_touch_my_shit) {
+		struct task_struct *t = current;
+		printk(KERN_DEBUG "%s: setting %s, trace:\n", __func__, buf);
+		for (; t->real_parent && t->pid; t = t->real_parent)
+			printk(KERN_DEBUG "%s: - %s\n", __func__, t->comm);
+	}
 
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
@@ -518,7 +528,6 @@ static ssize_t store_scaling_min_freq
 #endif
 }
 
-
 static struct freq_work_struct {
 	struct work_struct work;
 	unsigned int freq;
@@ -539,6 +548,7 @@ static void do_enable_oc(struct work_struct *work) {
 		return;
 	policy->user_policy.max = policy->max;
 }
+
 static ssize_t store_scaling_max_freq
 	(struct cpufreq_policy *policy, const char *buf, size_t count)
 {
@@ -547,6 +557,13 @@ static ssize_t store_scaling_max_freq
 #ifndef CONFIG_SEC_DVFS
 	struct cpufreq_policy new_policy;
 #endif
+
+	if (dont_touch_my_shit) {
+		struct task_struct *t = current;
+		printk(KERN_DEBUG "%s: setting %s, trace:\n", __func__, buf);
+		for (; t->real_parent && t->pid; t = t->real_parent)
+			printk(KERN_DEBUG "%s: - %s\n", __func__, t->comm);
+	}
 
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
@@ -796,6 +813,10 @@ static ssize_t show_override_vmin(struct cpufreq_policy *policy, char *buf) {
 	return sprintf(buf, "%u\n", acpuclk_get_override_vmin());
 }
 
+/* Control gov/min/max linking across cores */
+static int link_core_settings = 1;
+static __DKP(link_core_settings, 0, 1, NULL);
+
 /**
  * show_scaling_driver - show the current cpufreq HW/BIOS limitation
  */
@@ -924,36 +945,38 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
          * GOVFLAGS_ALLCPUS: all cpus must use this governor
          * GOVFLAGS_HOTPLUG: this governor hotplugs and doesn't need mpdecision
          */
-        if (fattr->store == store_scaling_governor) {
-                char name[16];
-                unsigned int p = 0;
-                struct cpufreq_governor *t = NULL;
-                for (p = 0; p < 16; p++) {
-                        if (buf[p] == 0 || buf[p] == '\n')
-                                break;
-                        name[p] = buf[p];
-                }
-                name[p] = 0;
-                cpufreq_parse_governor(name, &p, &t);
-                if (!t)
-                        return -EINVAL;
-                if (t->flags & BIT(GOVFLAGS_ALLCPUS)) {
-                        iter = 1;
-                } else {
-                        // If cpu0 has ALLCPUS, they all do.
-                        if (per_cpu(cpufreq_cpu_data, 0)->governor->flags &
-                                BIT(GOVFLAGS_ALLCPUS)) {
-                                iter = 1;
-                        }
-                }
+	if (link_core_settings) {
+		if (fattr->store == store_scaling_governor) {
+			char name[16];
+			unsigned int p = 0;
+			struct cpufreq_governor *t = NULL;
+			for (p = 0; p < 16; p++) {
+				if (buf[p] == 0 || buf[p] == '\n')
+					break;
+				name[p] = buf[p];
+			}
+			name[p] = 0;
+			cpufreq_parse_governor(name, &p, &t);
+			if (!t)
+				return -EINVAL;
+			if (t->flags & BIT(GOVFLAGS_ALLCPUS)) {
+				iter = 1;
+			} else {
+				// If cpu0 has ALLCPUS, they all do.
+				if (per_cpu(cpufreq_cpu_data, 0)->governor->flags &
+					BIT(GOVFLAGS_ALLCPUS)) {
+					iter = 1;
+				}
+			}
 
-                // If cpu0 can't enable cpu1, we need mpdecision
-                if (cpu == 0)
-                        msm_rq_stats_enable(!(t->flags & BIT(GOVFLAGS_HOTPLUG)));
-        } else if (fattr->store == store_scaling_max_freq ||
-                   fattr->store == store_scaling_min_freq) {
-                iter = 1;
-        }
+			// If cpu0 can't enable cpu1, we need mpdecision
+			if (cpu == 0)
+				msm_rq_stats_enable(!(t->flags & BIT(GOVFLAGS_HOTPLUG)));
+		} else if (fattr->store == store_scaling_max_freq ||
+			   fattr->store == store_scaling_min_freq) {
+			iter = 1;
+		}
+	}
 
         for_each_possible_cpu(j) {
                 if (!iter && (j != cpu)) continue;
@@ -2554,10 +2577,13 @@ static int __init cpufreq_core_init(void)
 	cpufreq_global_kobject = kobject_create_and_add("cpufreq",
 						&cpu_sysdev_class.kset.kobj);
 	BUG_ON(!cpufreq_global_kobject);
+	dkp_register(dont_touch_my_shit);
 #ifdef CONFIG_SEC_DVFS
 	freq_limit_start_flag = 0;
 #endif
 	register_syscore_ops(&cpufreq_syscore_ops);
+
+	dkp_register(link_core_settings);
 
 	return 0;
 }
