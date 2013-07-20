@@ -49,6 +49,13 @@
 #include <asm/unaligned.h>
 #include "mms_ts_fw.h"
 
+#if 0
+#undef dev_dbg
+#undef dev_notice
+#define dev_dbg(dev, fmt, arg...) do { } while (0)
+#define dev_notice(dev, fmt, arg...) do { } while (0)
+#endif
+
 #define MAX_FINGERS		10
 #define MAX_WIDTH		30
 #define MAX_PRESSURE		255
@@ -273,13 +280,9 @@ enum {
 struct mms_ts_info {
 	struct i2c_client		*client;
 	struct input_dev		*input_dev;
+	unsigned char finger_state[MAX_FINGERS];
 	char				phys[32];
 
-	int				max_x;
-	int				max_y;
-
-	bool				invert_x;
-	bool				invert_y;
 	const u8			*config_fw_version;
 	int				irq;
 
@@ -304,12 +307,10 @@ struct mms_ts_info {
 	bool			ta_status;
 	bool			noise_mode;
 
-	unsigned char finger_state[MAX_FINGERS];
-
 #if defined(SEC_TSP_FW_UPDATE)
 	u8				fw_update_state;
 #endif
-u8				fw_ic_ver;
+	u8				fw_ic_ver;
 
 #if defined(SEC_TSP_FACTORY_TEST)
 	struct list_head			cmd_list_head;
@@ -488,7 +489,7 @@ static void release_all_fingers(struct mms_ts_info *info)
 	pr_info("[TSP] dvfs_lock free.\n ");
 #endif
 #ifdef CONFIG_INTERACTION_HINTS
-	cpufreq_set_interactivity(touch_is_pressed, INTERACT_ID_TOUCHSCREEN);
+	cpufreq_set_interactivity(0, INTERACT_ID_TOUCHSCREEN);
 #endif
 }
 
@@ -586,33 +587,17 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 	};
 
 	sz = i2c_smbus_read_byte_data(client, MMS_INPUT_EVENT_PKT_SZ);
-	if (sz < 0) {
-		dev_err(&client->dev, "%s bytes=%d\n", __func__, sz);
-		for (i = 0; i < 50; i++) {
-			sz = i2c_smbus_read_byte_data(client,
-						MMS_INPUT_EVENT_PKT_SZ);
-			if (sz > 0)
-				break;
-		}
-
-		if (i == 50) {
-			dev_dbg(&client->dev, "i2c failed... reset!!\n");
-			reset_mms_ts(info);
-			goto out;
-		}
-	}
-	/* BUG_ON(sz > MAX_FINGERS*FINGER_EVENT_SZ); */
-	if (sz == 0)
+	if (unlikely(sz <= 0))
 		goto out;
 
-	if (sz > MAX_FINGERS*FINGER_EVENT_SZ) {
+	if (unlikely(sz > MAX_FINGERS*FINGER_EVENT_SZ)) {
 		dev_err(&client->dev, "[TSP] abnormal data inputed.\n");
 		goto out;
 	}
 
 	msg[1].len = sz;
 	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
-	if (ret != ARRAY_SIZE(msg)) {
+	if (unlikely(ret != ARRAY_SIZE(msg))) {
 		dev_err(&client->dev,
 			"failed to read %d bytes of touch data (%d)\n",
 			sz, ret);
@@ -624,13 +609,13 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 		DUMP_PREFIX_OFFSET, 32, 1, buf, sz, false);
 
 #endif
-	if (buf[0] == 0x0F) { /* ESD */
+	if (unlikely(buf[0] == 0x0F)) { /* ESD */
 		dev_dbg(&client->dev, "ESD DETECT.... reset!!\n");
 		reset_mms_ts(info);
 		goto out;
 	}
 
-	if (buf[0] == 0x0E) { /* NOISE MODE */
+	if (unlikely(buf[0] == 0x0E)) { /* NOISE MODE */
 		dev_dbg(&client->dev, "[TSP] noise mode enter!!\n");
 		info->noise_mode = 1 ;
 		mms_set_noise_mode(info);
@@ -644,24 +629,14 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 		int y = tmp[3] | (((tmp[1] >> 4) & 0xf) << 8);
 		int angle = (tmp[5] >= 127) ? (-(256 - tmp[5])) : tmp[5];
 		int palm = (buf[0] & 0x10) >> 4;
-		if (info->invert_x) {
-			x = info->max_x - x;
-			if (x < 0)
-				x = 0;
-		}
-		if (info->invert_y) {
-			y = info->max_y - y;
-			if (y < 0)
-				y = 0;
-		}
-		if (id >= MAX_FINGERS) {
+		if (unlikely(id >= MAX_FINGERS)) {
 			dev_notice(&client->dev, \
 				"finger id error [%d]\n", id);
 			reset_mms_ts(info);
 			goto out;
 		}
 
-		if ((tmp[0] & 0x80) == 0) {
+		if (unlikely((tmp[0] & 0x80) == 0)) {
 #if defined(SEC_TSP_DEBUG)
 			dev_dbg(&client->dev,
 				"finger id[%d]: x=%d y=%d p=%d w=%d major=%d minor=%d angle=%d palm=%d\n"
@@ -683,6 +658,7 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 					   MT_TOOL_FINGER, true);
 		input_report_abs(info->input_dev, ABS_MT_WIDTH_MAJOR, tmp[4]);
 #if defined(CONFIG_MACH_M2_KDI)
+#error This isn't going to work.
 		input_report_abs(info->input_dev, ABS_MT_POSITION_X,
 			(info->max_x - x));
 		input_report_abs(info->input_dev, ABS_MT_POSITION_Y,
@@ -2938,6 +2914,7 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	struct mms_ts_info *info;
 	struct input_dev *input_dev;
 	int ret = 0;
+	int max_x, max_y;
 #ifdef SEC_TSP_FACTORY_TEST
 	int i;
 	struct device *fac_dev_ts;
@@ -2967,15 +2944,13 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	info->irq = -1;
 	mutex_init(&info->lock);
 	if (info->pdata) {
-		info->max_x = info->pdata->max_x;
-		info->max_y = info->pdata->max_y;
-		info->invert_x = info->pdata->invert_x;
-		info->invert_y = info->pdata->invert_y;
+		max_x = info->pdata->max_x;
+		max_y = info->pdata->max_y;
 		info->config_fw_version = info->pdata->config_fw_version;
 		info->register_cb = info->pdata->register_cb;
 	} else {
-		info->max_x = 720;
-		info->max_y = 1280;
+		max_x = 720;
+		max_y = 1280;
 	}
 
 	i2c_set_clientdata(client, info);
@@ -2996,9 +2971,9 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 	input_set_abs_params(input_dev, ABS_MT_WIDTH_MAJOR, 0, MAX_WIDTH, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
-				0, info->max_x, 0, 0);
+				0, max_x, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
-				0, info->max_y, 0, 0);
+				0, max_y, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MAJOR,
 				0, MAX_PRESSURE, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MINOR,
