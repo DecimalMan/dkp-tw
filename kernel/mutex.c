@@ -57,7 +57,8 @@ EXPORT_SYMBOL(__mutex_init);
  * branch is predicted by the CPU as default-untaken.
  */
 static __used noinline void __sched
-__mutex_lock_slowpath(atomic_t *lock_count);
+__mutex_lock_slowpath(atomic_t *lock_count)
+	__attribute__((hot));
 
 /**
  * mutex_lock - acquire the mutex
@@ -94,7 +95,9 @@ void __sched mutex_lock(struct mutex *lock)
 EXPORT_SYMBOL(mutex_lock);
 #endif
 
-static __used noinline void __sched __mutex_unlock_slowpath(atomic_t *lock_count);
+static __used noinline void __sched
+__mutex_unlock_slowpath(atomic_t *lock_count)
+	__attribute__((hot));
 
 /**
  * mutex_unlock - release the mutex
@@ -129,6 +132,10 @@ EXPORT_SYMBOL(mutex_unlock);
 /*
  * Lock a mutex (possibly interruptible), slowpath:
  */
+static inline int __sched
+__mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
+		    struct lockdep_map *nest_lock, unsigned long ip)
+	__attribute__((hot));
 static inline int __sched
 __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		    struct lockdep_map *nest_lock, unsigned long ip)
@@ -305,6 +312,9 @@ EXPORT_SYMBOL_GPL(mutex_lock_interruptible_nested);
 /*
  * Release the lock, slowpath:
  */
+static inline void
+__mutex_unlock_common_slowpath(atomic_t *lock_count, int nested)
+	__attribute__((hot));
 static inline void
 __mutex_unlock_common_slowpath(atomic_t *lock_count, int nested)
 {
