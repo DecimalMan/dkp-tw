@@ -1370,7 +1370,7 @@ static void read_error_register(struct msm_fb_data_type *mfd)
 
 	wake_lock(&idle_wake_lock);
 
-#if CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_lock(&mipi_lp_mutex);
 #endif
 	mutex_lock(&mfd->dma->ov_mutex);
@@ -1398,7 +1398,7 @@ static void read_error_register(struct msm_fb_data_type *mfd)
 #endif
 
 	mutex_unlock(&mfd->dma->ov_mutex);
-#if CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_unlock(&mipi_lp_mutex);
 #endif
 	wake_unlock(&idle_wake_lock);

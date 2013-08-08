@@ -21,7 +21,7 @@
 #include <asm/cacheflush.h>
 
 #include <mach/scm.h>
-#if CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
 #endif
 
