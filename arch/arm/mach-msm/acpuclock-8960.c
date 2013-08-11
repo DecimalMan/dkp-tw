@@ -1921,6 +1921,7 @@ static int acpuclk_update_vdd_table(int num, unsigned int table[]) {
 		tgt->vdd_core = table[i];
 		i += dir;
 	}
+	return 0;
 }
 static int acpuclk_update_one_vdd(unsigned int freq, unsigned int uv) {
 	int ret = -EINVAL;
@@ -1930,7 +1931,7 @@ static int acpuclk_update_one_vdd(unsigned int freq, unsigned int uv) {
 			continue;
 		if (tgt->speed.khz == freq) {
 			tgt->vdd_core = uv;
-			ret = 1;
+			ret = 0;
 			break;
 		}
 	}
@@ -1943,7 +1944,7 @@ static int acpuclk_update_all_vdd(int adj) {
 			continue;
 		tgt->vdd_core += adj;
 	}
-	return 1;
+	return 0;
 }
 #define sanity_check(v) \
 	if (v < 10000) \
@@ -1971,7 +1972,7 @@ ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
 			adjust *= 1000;
 	}
 	if (ret == 1) {
-		if (acpuclk_update_all_vdd(adjust) == 1)
+		if (!acpuclk_update_all_vdd(adjust) == 1)
 			return count;
 		else
 			return -EINVAL;
@@ -1994,7 +1995,7 @@ ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
 	if (thislen == count - 1) {
 		while (freq < 10000) freq *= 1000;
 		sanity_check(volt);
-		if (acpuclk_update_one_vdd(freq, volt) == 1)
+		if (!cpuclk_update_one_vdd(freq, volt) == 1)
 			return count;
 		else
 			return -EINVAL;
@@ -2008,7 +2009,7 @@ ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
 		sanity_check(table[idx]);
 	}
 	if (idx == FREQ_TABLE_SIZE && len == count - 1) {
-		if (acpuclk_update_vdd_table(FREQ_TABLE_SIZE, table))
+		if (!acpuclk_update_vdd_table(FREQ_TABLE_SIZE, table))
 			return count;
 		else
 			return -EINVAL;
