@@ -1972,7 +1972,7 @@ ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
 			adjust *= 1000;
 	}
 	if (ret == 1) {
-		if (!acpuclk_update_all_vdd(adjust) == 1)
+		if (!acpuclk_update_all_vdd(adjust))
 			return count;
 		else
 			return -EINVAL;
@@ -1995,7 +1995,7 @@ ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
 	if (thislen == count - 1) {
 		while (freq < 10000) freq *= 1000;
 		sanity_check(volt);
-		if (!cpuclk_update_one_vdd(freq, volt) == 1)
+		if (!acpuclk_update_one_vdd(freq, volt))
 			return count;
 		else
 			return -EINVAL;
