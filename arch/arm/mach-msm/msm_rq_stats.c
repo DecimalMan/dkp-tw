@@ -103,7 +103,7 @@ static void def_work_fn(struct work_struct *work)
 	/* XXX this sucks.  On AOSP, we have hotplug_disabled to notify us that
 	 * mpdecision is suspended.
 	 */
-	if (unlikely(rq_info.rq_poll_total_jiffies > 5 * HZ)) {
+	if (unlikely(!(rq_info.rq_poll_total_jiffies & 511))) {
 		printk(KERN_DEBUG "rq-stats: where's mpdecision? migrating to auto-hotplug\n");
 		rq_hotplug_enable(1);
 	}
@@ -383,7 +383,7 @@ static int __init msm_rq_stats_init(void)
 
 	INIT_DELAYED_WORK_DEFERRABLE(&mpd_work, do_hotplug_enable);
 
-	rq_info.init = 1;
+	rq_info.init = 0;
 	return ret;
 }
 late_initcall(msm_rq_stats_init);

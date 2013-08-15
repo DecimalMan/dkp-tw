@@ -36,8 +36,7 @@
 #include <linux/mfd/pmic8058.h>
 #include <linux/input.h>
 #include <linux/sii9234.h>
-#include <linux/kobject.h>
-#include <linux/sysfs.h>
+#include <linux/dkp.h>
 
 /* FSA9480 I2C registers */
 #define FSA9485_REG_DEVID		0x01
@@ -140,6 +139,7 @@
 
 /* (1 = enabled) | (2 = state_usb) | (4 = state_fast) */
 static int force_fast_charge;
+static int fast_charge_setting;
 
 int uart_connecting;
 EXPORT_SYMBOL(uart_connecting);
@@ -1415,48 +1415,30 @@ static int fsa9485_resume(struct i2c_client *client)
 
 /* This is kind of hacky, but most of this code already abuses local_usbsw. */
 static inline void ffc_migrate(void) {
-	struct fsa9485_platform_data *pdata;
-	if (!local_usbsw || !local_usbsw->pdata) return;
-	pdata = local_usbsw->pdata;
-	if (pdata->usb_cb && pdata->charger_cb) {
-		if (force_fast_charge == 3) {
-			/* enabled | state_usb */
-			pdata->usb_cb(FSA9485_DETACHED);
-			pdata->charger_cb(FSA9485_ATTACHED);
-			force_fast_charge = 5;
-		} else if (force_fast_charge == 4) {
-			/* !enabled | state_fast */
-			pdata->charger_cb(FSA9485_DETACHED);
-			pdata->usb_cb(FSA9485_ATTACHED);
-			force_fast_charge = 2;
-		}
-	}
+        struct fsa9485_platform_data *pdata;
+        force_fast_charge = (force_fast_charge & ~1 ) | fast_charge_setting;
+        if (!local_usbsw || !local_usbsw->pdata) return;
+        pdata = local_usbsw->pdata;
+        if (pdata->usb_cb && pdata->charger_cb) {
+                if (force_fast_charge == 3) {
+                        /* enabled | state_usb */
+                        pdata->usb_cb(FSA9485_DETACHED);
+                        pdata->charger_cb(FSA9485_ATTACHED);
+                        force_fast_charge = 5;
+                } else if (force_fast_charge == 4) {
+                        /* !enabled | state_fast */
+                        pdata->charger_cb(FSA9485_DETACHED);
+                        pdata->usb_cb(FSA9485_ATTACHED);
+                        force_fast_charge = 2;
+                }
+        }
 }
-
-static ssize_t ffc_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf) {
-	return sprintf(buf, "%u\n", force_fast_charge & 1);
-}
-
-static ssize_t ffc_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count) {
-	int tmp;
-	if (sscanf(buf, "%u", &tmp)) {
-		if (!(tmp & ~1)) {
-			force_fast_charge = (force_fast_charge & 6) | tmp;
-			ffc_migrate();
-			return count;
-		}
-	}
-	return -EINVAL;
-}
-
-static struct kobj_attribute ffc_attr =
-	__ATTR(force_fast_charge, 0666, ffc_show, ffc_store);
-static struct attribute *ffc_attrs[] = { &ffc_attr.attr, NULL };
+static __DKP_NAME(fast_charge_setting, force_fast_charge, 0, 1, ffc_migrate);
+static struct attribute *ffc_attrs[] = {
+        &dkp_attr(force_fast_charge), NULL };
 static struct attribute_group ffc_attr_group = {
-	.attrs = ffc_attrs,
-	.name = "fast_charge"
+        .attrs = ffc_attrs,
+        .name = "fast_charge"
 };
 
 static const struct i2c_device_id fsa9485_id[] = {

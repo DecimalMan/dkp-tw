@@ -195,7 +195,7 @@ qup_i2c_interrupt(int irq, void *devid)
 	uint32_t op_flgs = readl_relaxed(dev->base + QUP_OPERATIONAL);
 	int err = 0;
 
-	if (!dev->msg || !dev->complete) {
+	if (unlikely(!dev->msg || !dev->complete)) {
 		/* Clear Error interrupt if it's a level triggered interrupt*/
 		if (dev->num_irqs == 1) {
 			writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
@@ -205,7 +205,7 @@ qup_i2c_interrupt(int irq, void *devid)
 		return IRQ_HANDLED;
 	}
 
-	if (status & I2C_STATUS_ERROR_MASK) {
+	if (unlikely(status & I2C_STATUS_ERROR_MASK)) {
 		dev_err(dev->dev, "QUP: I2C status flags :0x%x, irq:%d\n",
 			status, irq);
 		err = status;
@@ -218,7 +218,7 @@ qup_i2c_interrupt(int irq, void *devid)
 		goto intr_done;
 	}
 
-	if (status1 & 0x7F) {
+	if (unlikely(status1 & 0x7F)) {
 		dev_err(dev->dev, "QUP: QUP status flags :0x%x\n", status1);
 		err = -status1;
 		/* Clear Error interrupt if it's a level triggered interrupt*/
@@ -296,36 +296,12 @@ qup_i2c_poll_state(struct qup_i2c_dev *dev, uint32_t req_state, bool only_valid)
 static int
 qup_update_state(struct qup_i2c_dev *dev, uint32_t state)
 {
-	if (qup_i2c_poll_state(dev, 0, true) != 0)
+	if (unlikely(qup_i2c_poll_state(dev, 0, true) != 0))
 		return -EIO;
 	writel_relaxed(state, dev->base + QUP_STATE);
-	if (qup_i2c_poll_state(dev, state, false) != 0)
+	if (unlikely(qup_i2c_poll_state(dev, state, false) != 0))
 		return -EIO;
 	return 0;
-}
-
-/*
- * Before calling qup_config_core_on_en(), please make
- * sure that QuPE core is in RESET state.
- *
- * Configuration of CORE_ON_EN - BIT13 in QUP_CONFIG register
- * is only required for targets like 7x27a, where it needs
- * be turned on for disabling the QuPE pclks.
- */
-static void
-qup_config_core_on_en(struct qup_i2c_dev *dev)
-{
-	uint32_t status;
-
-	if (!(cpu_is_msm7x27a() || cpu_is_msm7x27aa() ||
-		 cpu_is_msm7x25a() || cpu_is_msm7x25aa()))
-		return;
-
-	status = readl_relaxed(dev->base + QUP_CONFIG);
-	status |= BIT(13);
-	writel_relaxed(status, dev->base + QUP_CONFIG);
-	/* making sure that write has really gone through */
-	mb();
 }
 
 static void
@@ -338,7 +314,6 @@ qup_i2c_pwr_mgmt(struct qup_i2c_dev *dev, unsigned int state)
 	} else {
 		qup_update_state(dev, QUP_RESET_STATE);
 		clk_disable(dev->clk);
-                qup_config_core_on_en(dev);
 		clk_disable(dev->pclk);
 	}
 }
@@ -763,12 +738,12 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	del_timer_sync(&dev->pwr_timer);
 	mutex_lock(&dev->mlock);
 
-	if (dev->suspended) {
+	if (unlikely(dev->suspended)) {
 		mutex_unlock(&dev->mlock);
 		return -EIO;
 	}
 
-	if (dev->clk_state == 0) {
+	if (unlikely(dev->clk_state == 0)) {
 		if (dev->clk_ctl == 0) {
 			if (dev->pdata->src_clk_rate > 0)
 				clk_set_rate(dev->clk,
@@ -779,7 +754,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		qup_i2c_pwr_mgmt(dev, 1);
 	}
 	/* Initialize QUP registers during first transfer */
-	if (dev->clk_ctl == 0) {
+	if (unlikely(dev->clk_ctl == 0)) {
 		int fs_div;
 		int hs_div;
 		uint32_t fifo_reg;
@@ -825,7 +800,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 	writel_relaxed(1, dev->base + QUP_SW_RESET);
 	ret = qup_i2c_poll_state(dev, QUP_RESET_STATE, false);
-	if (ret) {
+	if (unlikely(ret)) {
 		dev_err(dev->dev, "QUP Busy:Trying to recover\n");
 		goto out_err;
 	}
@@ -857,7 +832,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		dev->err = 0;
 		dev->complete = &complete;
 
-		if (qup_i2c_poll_state(dev, QUP_I2C_MAST_GEN, false) != 0) {
+		if (unlikely(qup_i2c_poll_state(dev, QUP_I2C_MAST_GEN, false) != 0)) {
 			ret = -EIO;
 			goto out_err;
 		}
@@ -878,7 +853,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		}
 
 		err = qup_update_state(dev, QUP_RUN_STATE);
-		if (err < 0) {
+		if (unlikely(err < 0)) {
 			ret = err;
 			goto out_err;
 		}
@@ -897,7 +872,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 			/* Transition to PAUSE state only possible from RUN */
 			err = qup_update_state(dev, QUP_PAUSE_STATE);
-			if (err < 0) {
+			if (unlikely(err < 0)) {
 				ret = err;
 				goto out_err;
 			}
@@ -910,7 +885,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				if ((msgs->flags & I2C_M_RD))
 					qup_issue_read(dev, msgs, &idx,
 							carry_over);
-				else if (!(msgs->flags & I2C_M_RD))
+				else
 					qup_issue_write(dev, msgs, rem, &idx,
 							&carry_over);
 				if (idx >= (dev->wr_sz << 1))
@@ -940,7 +915,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				}
 			}
 			err = qup_update_state(dev, QUP_RUN_STATE);
-			if (err < 0) {
+			if (unlikely(err < 0)) {
 				ret = err;
 				goto out_err;
 			}
@@ -950,7 +925,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 			qup_print_status(dev);
 			timeout = wait_for_completion_timeout(&complete,
 					msecs_to_jiffies(dev->out_fifo_sz));
-			if (!timeout) {
+			if (unlikely(!timeout)) {
 				uint32_t istatus = readl_relaxed(dev->base +
 							QUP_I2C_STATUS);
 				uint32_t qstatus = readl_relaxed(dev->base +
@@ -988,7 +963,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				goto out_err;
 			}
 timeout_err:
-			if (dev->err) {
+			if (unlikely(dev->err)) {
 				if (dev->err > 0 &&
 					dev->err & QUP_I2C_NACK_FLAG) {
 					dev_err(dev->dev,
@@ -1178,9 +1153,11 @@ qup_i2c_probe(struct platform_device *pdev)
 		goto err_clk_get_failed;
 	}
 
-	/* We support frequencies upto FAST Mode(400KHz) */
+	/* We support frequencies upto FAST Mode(400KHz)
+	 * ...or, we could have some fun!  2 MHz seems stable enough.
+	 */
 	if (pdata->clk_freq <= 0 ||
-			pdata->clk_freq > 400000) {
+			pdata->clk_freq > 2000000) {
 		dev_err(&pdev->dev, "clock frequency not supported\n");
 		ret = -EIO;
 		goto err_config_failed;

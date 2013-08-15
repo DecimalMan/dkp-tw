@@ -397,7 +397,7 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 	mask = inpdw(MDP_INTR_ENABLE);
 	outpdw(MDP_INTR_CLEAR, isr);
 
-	if (isr & INTR_PRIMARY_INTF_UDERRUN) {
+	if (unlikely(isr & INTR_PRIMARY_INTF_UDERRUN)) {
 		pr_debug("%s: UNDERRUN -- primary\n", __func__);
 #ifdef BLT_MODE_CHANGE_ISSUE
 		if(middle_of_blt_change)
@@ -425,10 +425,6 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 			mgmt->mdp_is_hist_valid = FALSE;
 			__mdp_histogram_reset(mgmt);
 		}
-	}
-
-	if (isr & INTR_EXTERNAL_INTF_UDERRUN) {
-		pr_debug("%s: UNDERRUN -- external\n", __func__);
 	}
 
 	isr &= mask;

@@ -449,11 +449,45 @@ show_one(cpuinfo_min_freq, cpuinfo.min_freq);
 show_one(cpuinfo_max_freq, cpuinfo.max_freq);
 show_one(cpuinfo_transition_latency, cpuinfo.transition_latency);
 show_one(scaling_min_freq, min);
-show_one(scaling_max_freq, max);
+//show_one(scaling_max_freq, max);
 show_one(scaling_cur_freq, cur);
 #if defined(__MP_DECISION_PATCH__)
 show_one(cpu_utilization, utils);
 #endif
+
+/* thermald watches scaling_max_freq and resets it to 1512 when it's changed.
+ * We filter its input and output in order to keep it behaving.  Rather than
+ * run a strcmp during every show/store, we cache its task_struct.
+ */
+static struct task_struct *thermald;
+static int check_current_is_thermald(void) {
+	int ret = 0;
+	if (current != thermald) {
+		if (!strcmp(current->comm, "thermald")) {
+			printk(KERN_DEBUG "%s: found thermald (pid %u)!\n",
+				__func__, current->pid);
+			thermald = current;
+			ret = 1;
+		}
+	} else {
+		ret = 1;
+	}
+	return ret;
+}
+
+static ssize_t show_scaling_max_freq(struct cpufreq_policy *policy, char *buf)
+{
+	int val = 0;
+	if (check_current_is_thermald()) {
+		if (policy->max == policy->user_policy.max)
+			val = 1512000;
+		else
+			val = policy->max;
+	} else {
+		val = policy->max;
+	}
+	return sprintf(buf, "%u\n", val);
+}
 
 static int __cpufreq_set_policy(struct cpufreq_policy *data,
 				struct cpufreq_policy *policy);
@@ -482,6 +516,9 @@ static ssize_t store_##file_name					\
 	return ret ? ret : count;					\
 }
 
+static int dont_touch_my_shit = 0;
+static __DKP(dont_touch_my_shit, 0, 1, NULL);
+
 static ssize_t store_scaling_min_freq
 (struct cpufreq_policy *policy, const char *buf, size_t count)
 {
@@ -490,6 +527,13 @@ static ssize_t store_scaling_min_freq
 #ifndef CONFIG_SEC_DVFS
 	struct cpufreq_policy new_policy;
 #endif
+
+	if (dont_touch_my_shit) {
+		struct task_struct *t;
+		printk(KERN_DEBUG "%s: setting %s, trace:\n", __func__, buf);
+		for (t = current; t->real_parent && t->pid; t = t->real_parent)
+			printk(KERN_DEBUG "%s: - %s\n", __func__, t->comm);
+	}
 
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
@@ -509,7 +553,7 @@ static ssize_t store_scaling_min_freq
 	if (ret)
 		return -EINVAL;
 
-	policy->min = value;
+	new_policy.min = value;
 
 	ret = __cpufreq_set_policy(policy, &new_policy);
 	policy->user_policy.min = policy->min;
@@ -518,44 +562,73 @@ static ssize_t store_scaling_min_freq
 #endif
 }
 
-
-static struct freq_work_struct {
+struct freq_work_struct {
 	struct work_struct work;
 	unsigned int freq;
 	struct cpufreq_policy *policy;
-} enable_oc_work;
+};
 void acpuclk_enable_oc_freqs(unsigned int freq);
 
 static void do_enable_oc(struct work_struct *work) {
+	int ret;
+	unsigned int new_max = ((struct freq_work_struct *) work)->freq;
 	struct cpufreq_policy new_policy;
 	struct cpufreq_policy *policy =
 		((struct freq_work_struct *) work)->policy;
-	if (cpufreq_get_policy(&new_policy, policy->cpu))
-		return;
-	new_policy.max = ((struct freq_work_struct *) work)->freq;
-	acpuclk_enable_oc_freqs(new_policy.max);
-	policy->cpuinfo.max_freq = new_policy.max;
-	if (__cpufreq_set_policy(policy, &new_policy))
-		return;
+	acpuclk_enable_oc_freqs(new_max);
+	if (ret = cpufreq_get_policy(&new_policy, policy->cpu)) {
+		printk(KERN_ERR "%s: can't get policy (%i)!\n", __func__, ret);
+		goto out;
+	}
+	policy->cpuinfo.max_freq = new_policy.max = new_max;
+	printk(KERN_DEBUG "%s: set policy for cpu %i\n", __func__, policy->cpu);
+	if (ret = __cpufreq_set_policy(policy, &new_policy)) {
+		printk(KERN_ERR "%s: can't set policy (%i)!\n", __func__, ret);
+		goto out;
+	}
 	policy->user_policy.max = policy->max;
+out:
+	kfree(work);
 }
+
 static ssize_t store_scaling_max_freq
 	(struct cpufreq_policy *policy, const char *buf, size_t count)
 {
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
+	bool is_thermald = 0;
 #ifndef CONFIG_SEC_DVFS
 	struct cpufreq_policy new_policy;
 #endif
+
+	if (dont_touch_my_shit) {
+		struct task_struct *t;
+		printk(KERN_DEBUG "%s: setting %s, trace:\n", __func__, buf);
+		for (t = current; t->real_parent && t->pid; t = t->real_parent)
+			printk(KERN_DEBUG "%s: - %s\n", __func__, t->comm);
+	}
 
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
 		return -EINVAL;
 
+	if (check_current_is_thermald()) {
+		printk(KERN_DEBUG "%s: mangling thermald frequency %u\n", __func__, value);
+		is_thermald = 1;
+		if (value == 1512000)
+			value = policy->user_policy.max;
+	}
+
 	if (value > BOOT_FREQ_LIMIT) {
-		enable_oc_work.freq = value;
-		enable_oc_work.policy = policy;
-		schedule_work((struct work_struct *) &enable_oc_work);
+		static struct freq_work_struct *enable_oc_work;
+		enable_oc_work = kzalloc(sizeof(struct freq_work_struct), GFP_KERNEL);
+		if (enable_oc_work) {
+			INIT_WORK((struct work_struct *) enable_oc_work, do_enable_oc);
+			enable_oc_work->freq = value;
+			enable_oc_work->policy = policy;
+			schedule_work((struct work_struct *) enable_oc_work);
+		}
+		return count;
 	}
 
 #ifdef CONFIG_SEC_DVFS
@@ -572,10 +645,11 @@ static ssize_t store_scaling_max_freq
 	if (ret)
 		return -EINVAL;
 
-	policy->max = value;
+	new_policy.max = value;
 
 	ret = __cpufreq_set_policy(policy, &new_policy);
-	policy->user_policy.max = policy->max;
+	if (!is_thermald)
+		policy->user_policy.max = policy->max;
 
 	return ret ? ret : count;
 #endif
@@ -772,13 +846,13 @@ static ssize_t show_scaling_setspeed(struct cpufreq_policy *policy, char *buf)
 
 /* Per-core UV interface */
 ssize_t acpuclk_store_vdd_table(const char *buf, size_t count);
-ssize_t acpuclk_show_vdd_table(char *buf, char *fmt, int fdiv, int vdiv);
+ssize_t acpuclk_show_vdd_table(char *buf, char *fmt, int dir, int fdiv, int vdiv);
 static ssize_t store_UV_mV_table(struct cpufreq_policy *policy,
 					const char *buf, size_t count) {
 	return acpuclk_store_vdd_table(buf, count);
 }
 static ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf) {
-	return acpuclk_show_vdd_table(buf, "%umhz: %u mV\n", 1000, 1000);
+	return acpuclk_show_vdd_table(buf, "%umhz: %u mV\n", -1, 1000, 1000);
 }
 
 /* Per-core vmin interface */
@@ -795,6 +869,10 @@ static ssize_t store_override_vmin(struct cpufreq_policy *policy,
 static ssize_t show_override_vmin(struct cpufreq_policy *policy, char *buf) {
 	return sprintf(buf, "%u\n", acpuclk_get_override_vmin());
 }
+
+/* Control gov/min/max linking across cores */
+static int link_core_settings = 1;
+static __DKP(link_core_settings, 0, 1, NULL);
 
 /**
  * show_scaling_driver - show the current cpufreq HW/BIOS limitation
@@ -924,36 +1002,38 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
          * GOVFLAGS_ALLCPUS: all cpus must use this governor
          * GOVFLAGS_HOTPLUG: this governor hotplugs and doesn't need mpdecision
          */
-        if (fattr->store == store_scaling_governor) {
-                char name[16];
-                unsigned int p = 0;
-                struct cpufreq_governor *t = NULL;
-                for (p = 0; p < 16; p++) {
-                        if (buf[p] == 0 || buf[p] == '\n')
-                                break;
-                        name[p] = buf[p];
-                }
-                name[p] = 0;
-                cpufreq_parse_governor(name, &p, &t);
-                if (!t)
-                        return -EINVAL;
-                if (t->flags & BIT(GOVFLAGS_ALLCPUS)) {
-                        iter = 1;
-                } else {
-                        // If cpu0 has ALLCPUS, they all do.
-                        if (per_cpu(cpufreq_cpu_data, 0)->governor->flags &
-                                BIT(GOVFLAGS_ALLCPUS)) {
-                                iter = 1;
-                        }
-                }
+	if (link_core_settings) {
+		if (fattr->store == store_scaling_governor) {
+			char name[16];
+			unsigned int p = 0;
+			struct cpufreq_governor *t = NULL;
+			for (p = 0; p < 16; p++) {
+				if (buf[p] == 0 || buf[p] == '\n')
+					break;
+				name[p] = buf[p];
+			}
+			name[p] = 0;
+			cpufreq_parse_governor(name, &p, &t);
+			if (!t)
+				return -EINVAL;
+			if (t->flags & BIT(GOVFLAGS_ALLCPUS)) {
+				iter = 1;
+			} else {
+				// If cpu0 has ALLCPUS, they all do.
+				if (per_cpu(cpufreq_cpu_data, 0)->governor->flags &
+					BIT(GOVFLAGS_ALLCPUS)) {
+					iter = 1;
+				}
+			}
 
-                // If cpu0 can't enable cpu1, we need mpdecision
-                if (cpu == 0)
-                        msm_rq_stats_enable(!(t->flags & BIT(GOVFLAGS_HOTPLUG)));
-        } else if (fattr->store == store_scaling_max_freq ||
-                   fattr->store == store_scaling_min_freq) {
-                iter = 1;
-        }
+			// If cpu0 can't enable cpu1, we need mpdecision
+			if (cpu == 0)
+				msm_rq_stats_enable(!(t->flags & BIT(GOVFLAGS_HOTPLUG)));
+		} else if (fattr->store == store_scaling_max_freq ||
+			   fattr->store == store_scaling_min_freq) {
+			iter = 1;
+		}
+	}
 
         for_each_possible_cpu(j) {
                 if (!iter && (j != cpu)) continue;
@@ -2489,7 +2569,6 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	cpufreq_queue_priv.wq = create_workqueue("cpufreq_queue");
 	INIT_WORK(&cpufreq_queue_priv.work, cpufreq_set_limit_work);
 #endif
-	INIT_WORK((struct work_struct *) &enable_oc_work, do_enable_oc);
 
 	return 0;
 err_sysdev_unreg:
@@ -2554,10 +2633,13 @@ static int __init cpufreq_core_init(void)
 	cpufreq_global_kobject = kobject_create_and_add("cpufreq",
 						&cpu_sysdev_class.kset.kobj);
 	BUG_ON(!cpufreq_global_kobject);
+	dkp_register(dont_touch_my_shit);
 #ifdef CONFIG_SEC_DVFS
 	freq_limit_start_flag = 0;
 #endif
 	register_syscore_ops(&cpufreq_syscore_ops);
+
+	dkp_register(link_core_settings);
 
 	return 0;
 }

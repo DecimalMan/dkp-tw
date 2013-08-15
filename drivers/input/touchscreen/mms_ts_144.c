@@ -14,15 +14,6 @@
  *
  */
 
-//#define DEBUG
-/* #define VERBOSE_DEBUG */
-/* #define SEC_TSP_DEBUG */
-//#define SEC_TSP_VERBOSE_DEBUG
-
-/* #define FORCE_FW_FLASH */
-/* #define FORCE_FW_PASS */
-/* #define ESD_DEBUG */
-
 #define SEC_TSP_FACTORY_TEST
 #define SEC_TSP_FW_UPDATE
 #define TSP_BUF_SIZE 1024
@@ -48,6 +39,13 @@
 
 #include <asm/unaligned.h>
 #include "mms_ts_fw.h"
+
+#if 0
+#undef dev_dbg
+#undef dev_notice
+#define dev_dbg(dev, fmt, arg...) do { } while (0)
+#define dev_notice(dev, fmt, arg...) do { } while (0)
+#endif
 
 #define MAX_FINGERS		10
 #define MAX_WIDTH		30
@@ -80,14 +78,11 @@ enum {
 #define ISP_MAX_FW_SIZE		(0x1F00 * 4)
 #define ISP_IC_INFO_ADDR	0x1F00
 
-#ifdef CONFIG_SEC_DVFS
+#if 0
 #define TOUCH_BOOSTER			1
 #define TOUCH_BOOSTER_OFF_TIME	100
 #define TOUCH_BOOSTER_CHG_TIME	200
-#else
-#define TOUCH_BOOSTER 0
 #endif
-
 
 #ifdef SEC_TSP_FW_UPDATE
 
@@ -273,13 +268,9 @@ enum {
 struct mms_ts_info {
 	struct i2c_client		*client;
 	struct input_dev		*input_dev;
+	unsigned char finger_state[MAX_FINGERS];
 	char				phys[32];
 
-	int				max_x;
-	int				max_y;
-
-	bool				invert_x;
-	bool				invert_y;
 	const u8			*config_fw_version;
 	int				irq;
 
@@ -287,7 +278,7 @@ struct mms_ts_info {
 
 	char				*fw_name;
 	struct early_suspend		early_suspend;
-#if TOUCH_BOOSTER
+#ifdef TOUCH_BOOSTER
 	struct delayed_work work_dvfs_off;
 	struct delayed_work	work_dvfs_chg;
 	bool	dvfs_lock_status;
@@ -304,12 +295,10 @@ struct mms_ts_info {
 	bool			ta_status;
 	bool			noise_mode;
 
-	unsigned char finger_state[MAX_FINGERS];
-
 #if defined(SEC_TSP_FW_UPDATE)
 	u8				fw_update_state;
 #endif
-u8				fw_ic_ver;
+	u8				fw_ic_ver;
 
 #if defined(SEC_TSP_FACTORY_TEST)
 	struct list_head			cmd_list_head;
@@ -397,7 +386,7 @@ struct tsp_cmd tsp_cmds[] = {
 };
 #endif
 
-#if TOUCH_BOOSTER
+#ifdef TOUCH_BOOSTER
 static void change_dvfs_lock(struct work_struct *work)
 {
 	struct mms_ts_info *info = container_of(work,
@@ -469,12 +458,12 @@ static void release_all_fingers(struct mms_ts_info *info)
 #endif
 	int i;
 
-	printk(KERN_DEBUG "[TSP] %s\n", __func__);
+	//printk(KERN_DEBUG "[TSP] %s\n", __func__);
 
 	for (i = 0; i < MAX_FINGERS; i++) {
 #ifdef SEC_TSP_DEBUG
 		if (info->finger_state[i] == 1) {
-			dev_notice(&client->dev, "finger %d up(force)\n", i);
+			dev_dbg(&client->dev, "finger %d up(force)\n", i);
 		}
 #endif
 		info->finger_state[i] = 0;
@@ -483,12 +472,12 @@ static void release_all_fingers(struct mms_ts_info *info)
 					   false);
 	}
 	input_sync(info->input_dev);
-#if TOUCH_BOOSTER
+#ifdef TOUCH_BOOSTER
 	set_dvfs_lock(info, 2);
 	pr_info("[TSP] dvfs_lock free.\n ");
 #endif
 #ifdef CONFIG_INTERACTION_HINTS
-	cpufreq_set_interactivity(touch_is_pressed, INTERACT_ID_TOUCHSCREEN);
+	cpufreq_set_interactivity(0, INTERACT_ID_TOUCHSCREEN);
 #endif
 }
 
@@ -570,91 +559,64 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 	u8 buf[MAX_FINGERS*FINGER_EVENT_SZ] = { 0 };
 	int ret;
 	int i;
-	int sz;
-	u8 reg = MMS_INPUT_EVENT0;
+	/* Since the QUP driver can't merge operations past a read, we can safely
+	 * merge the smbus & i2c reads into a single block and avoid locking
+	 * and reinitializing.
+	 */
+	u8 reg0 = MMS_INPUT_EVENT_PKT_SZ, reg1 = MMS_INPUT_EVENT0;
 	struct i2c_msg msg[] = {
 		{
+			.addr	= client->addr,
+			.flags	= 0,
+			.buf	= &reg0,
+			.len	= 1,
+		}, {
+			.addr	= client->addr,
+			.flags	= I2C_M_RD,
+			.buf	= (char *)&msg[3].len,
+			.len	= 1,
+		}, {
 			.addr   = client->addr,
 			.flags  = 0,
-			.buf    = &reg,
+			.buf    = &reg1,
 			.len    = 1,
 		}, {
 			.addr   = client->addr,
 			.flags  = I2C_M_RD,
 			.buf    = buf,
+			.len	= 0,
 		},
 	};
 
-	sz = i2c_smbus_read_byte_data(client, MMS_INPUT_EVENT_PKT_SZ);
-	if (sz < 0) {
-		dev_err(&client->dev, "%s bytes=%d\n", __func__, sz);
-		for (i = 0; i < 50; i++) {
-			sz = i2c_smbus_read_byte_data(client,
-						MMS_INPUT_EVENT_PKT_SZ);
-			if (sz > 0)
-				break;
-		}
-
-		if (i == 50) {
-			dev_dbg(&client->dev, "i2c failed... reset!!\n");
-			reset_mms_ts(info);
-			goto out;
-		}
-	}
-	/* BUG_ON(sz > MAX_FINGERS*FINGER_EVENT_SZ); */
-	if (sz == 0)
-		goto out;
-
-	if (sz > MAX_FINGERS*FINGER_EVENT_SZ) {
-		dev_err(&client->dev, "[TSP] abnormal data inputed.\n");
-		goto out;
-	}
-
-	msg[1].len = sz;
 	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
-	if (ret != ARRAY_SIZE(msg)) {
+	if (unlikely(ret != ARRAY_SIZE(msg))) {
 		dev_err(&client->dev,
 			"failed to read %d bytes of touch data (%d)\n",
-			sz, ret);
+			msg[3].len, ret);
 		goto out;
 	}
 
-#if defined(VERBOSE_DEBUG)
-	print_hex_dump(KERN_DEBUG, "mms_ts raw: ",
-		DUMP_PREFIX_OFFSET, 32, 1, buf, sz, false);
-
-#endif
-	if (buf[0] == 0x0F) { /* ESD */
+	if (unlikely(buf[0] == 0x0F)) { /* ESD */
 		dev_dbg(&client->dev, "ESD DETECT.... reset!!\n");
 		reset_mms_ts(info);
 		goto out;
 	}
 
-	if (buf[0] == 0x0E) { /* NOISE MODE */
+	if (unlikely(buf[0] == 0x0E)) { /* NOISE MODE */
 		dev_dbg(&client->dev, "[TSP] noise mode enter!!\n");
 		info->noise_mode = 1 ;
 		mms_set_noise_mode(info);
 		goto out;
 	}
 
-	for (i = 0; i < sz; i += FINGER_EVENT_SZ) {
+	for (i = 0; i < msg[3].len; i += FINGER_EVENT_SZ) {
 		u8 *tmp = &buf[i];
 		int id = (tmp[0] & 0xf) - 1;
 		int x = tmp[2] | ((tmp[1] & 0xf) << 8);
 		int y = tmp[3] | (((tmp[1] >> 4) & 0xf) << 8);
 		int angle = (tmp[5] >= 127) ? (-(256 - tmp[5])) : tmp[5];
 		int palm = (buf[0] & 0x10) >> 4;
-		if (info->invert_x) {
-			x = info->max_x - x;
-			if (x < 0)
-				x = 0;
-		}
-		if (info->invert_y) {
-			y = info->max_y - y;
-			if (y < 0)
-				y = 0;
-		}
-		if (id >= MAX_FINGERS) {
+		if (unlikely(id >= MAX_FINGERS)) {
 			dev_notice(&client->dev, \
 				"finger id error [%d]\n", id);
 			reset_mms_ts(info);
@@ -662,14 +624,6 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 		}
 
 		if ((tmp[0] & 0x80) == 0) {
-#if defined(SEC_TSP_DEBUG)
-			dev_dbg(&client->dev,
-				"finger id[%d]: x=%d y=%d p=%d w=%d major=%d minor=%d angle=%d palm=%d\n"
-				, id, x, y, tmp[5], tmp[4], tmp[6], tmp[7]
-				, angle, palm);
-#else
-			dev_notice(&client->dev, "finger [%d] up\n", id);
-#endif
 			input_mt_slot(info->input_dev, id);
 			input_mt_report_slot_state(info->input_dev,
 						   MT_TOOL_FINGER, false);
@@ -682,30 +636,13 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 		input_mt_report_slot_state(info->input_dev,
 					   MT_TOOL_FINGER, true);
 		input_report_abs(info->input_dev, ABS_MT_WIDTH_MAJOR, tmp[4]);
-#if defined(CONFIG_MACH_M2_KDI)
-		input_report_abs(info->input_dev, ABS_MT_POSITION_X,
-			(info->max_x - x));
-		input_report_abs(info->input_dev, ABS_MT_POSITION_Y,
-			(info->max_y - y));
-#else
 		input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
 		input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
-#endif
 		input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, tmp[6]);
 		input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR, tmp[7]);
 		input_report_abs(info->input_dev, ABS_MT_ANGLE, angle);
 		input_report_abs(info->input_dev, ABS_MT_PALM, palm);
-#if defined(SEC_TSP_DEBUG)
-		if (info->finger_state[id] == 0) {
-			info->finger_state[id] = 1;
-			dev_dbg(&client->dev,
-				"finger id[%d]: x=%d y=%d p=%d w=%d major=%d minor=%d angle=%d palm=%d\n"
-				, id, x, y, tmp[5], tmp[4], tmp[6], tmp[7]
-				, angle, palm);
-		}
-#else
 		info->finger_state[id] = 1;
-#endif
 	}
 
 	input_sync(info->input_dev);
@@ -716,7 +653,7 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 			touch_is_pressed++;
 	}
 
-#if TOUCH_BOOSTER
+#ifdef TOUCH_BOOSTER
 	set_dvfs_lock(info, !!touch_is_pressed);
 #endif
 #ifdef CONFIG_INTERACTION_HINTS
@@ -2938,6 +2875,7 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	struct mms_ts_info *info;
 	struct input_dev *input_dev;
 	int ret = 0;
+	int max_x, max_y;
 #ifdef SEC_TSP_FACTORY_TEST
 	int i;
 	struct device *fac_dev_ts;
@@ -2967,15 +2905,13 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	info->irq = -1;
 	mutex_init(&info->lock);
 	if (info->pdata) {
-		info->max_x = info->pdata->max_x;
-		info->max_y = info->pdata->max_y;
-		info->invert_x = info->pdata->invert_x;
-		info->invert_y = info->pdata->invert_y;
+		max_x = info->pdata->max_x;
+		max_y = info->pdata->max_y;
 		info->config_fw_version = info->pdata->config_fw_version;
 		info->register_cb = info->pdata->register_cb;
 	} else {
-		info->max_x = 720;
-		info->max_y = 1280;
+		max_x = 720;
+		max_y = 1280;
 	}
 
 	i2c_set_clientdata(client, info);
@@ -2996,9 +2932,9 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 	input_set_abs_params(input_dev, ABS_MT_WIDTH_MAJOR, 0, MAX_WIDTH, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
-				0, info->max_x, 0, 0);
+				0, max_x, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
-				0, info->max_y, 0, 0);
+				0, max_y, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MAJOR,
 				0, MAX_PRESSURE, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MINOR,
@@ -3016,7 +2952,7 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		goto err_reg_input_dev;
 	}
 
-#if TOUCH_BOOSTER
+#ifdef TOUCH_BOOSTER
 	mutex_init(&info->dvfs_lock);
 	INIT_DELAYED_WORK(&info->work_dvfs_off, set_dvfs_off);
 	INIT_DELAYED_WORK(&info->work_dvfs_chg, change_dvfs_lock);

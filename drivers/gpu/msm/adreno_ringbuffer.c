@@ -818,9 +818,8 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	unsigned int *link;
 	unsigned int *cmds;
-	unsigned int i;
+	unsigned int i = 0;
 	struct adreno_context *drawctxt;
-	unsigned int start_index = 0;
 
 	if (device->state & KGSL_STATE_HUNG)
 		return -EBUSY;
@@ -836,23 +835,23 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 			drawctxt);
 		return -EDEADLK;
 	}
-	link = kzalloc(sizeof(unsigned int) * numibs * 3, GFP_KERNEL);
-	cmds = link;
-	if (!link) {
-		KGSL_MEM_ERR(device, "Failed to allocate memory for for command"
-			" submission, size %x\n", numibs * 3);
-		return -ENOMEM;
-	}
-
 	/*When preamble is enabled, the preamble buffer with state restoration
 	commands are stored in the first node of the IB chain. We can skip that
 	if a context switch hasn't occured */
 
 	if (drawctxt->flags & CTXT_FLAGS_PREAMBLE &&
 		adreno_dev->drawctxt_active == drawctxt)
-		start_index = 1;
+		i = 1;
 
-	for (i = start_index; i < numibs; i++) {
+	link = kmalloc(sizeof(unsigned int) * (numibs - i) * 3, GFP_KERNEL);
+	cmds = link;
+	if (!link) {
+		KGSL_MEM_ERR(device, "Failed to allocate memory for for command"
+			" submission, size %x\n", (numibs - i) * 3);
+		return -ENOMEM;
+	}
+
+	for (; i < numibs; i++) {
 		if (unlikely(adreno_dev->ib_check_level >= 1 &&
 		    !_parse_ibs(dev_priv, ibdesc[i].gpuaddr,
 				ibdesc[i].sizedwords))) {
