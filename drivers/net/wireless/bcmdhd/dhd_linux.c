@@ -355,8 +355,10 @@ typedef struct dhd_info {
 #endif
 } dhd_info_t;
 
+#ifdef ENABLE_CRAP
 /* Flag to indicate if we should download firmware on driver load */
 uint dhd_download_fw_on_driverload = TRUE;
+#endif
 
 /* Definitions to provide path to the firmware and nvram
  * example nvram_path[MOD_PARAM_PATHLEN]="/projects/wlan/nvram.txt"
@@ -384,8 +386,10 @@ int dhd_registration_check = FALSE;
 uint dhd_sysioc = TRUE;
 module_param(dhd_sysioc, uint, 0);
 
+#ifdef ENABLE_CRAP
 /* Error bits */
 module_param(dhd_msg_level, int, 0);
+#endif
 
 /* Disable Prop tx */
 module_param(disable_proptx, int, 0644);

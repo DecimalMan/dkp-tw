@@ -34,6 +34,8 @@
 #include <linux/fb.h>
 #include <linux/msm_mdp.h>
 #include <linux/ioctl.h>
+#include <linux/gen_attr.h>
+#include <linux/dkp.h>
 
 #include "mdp4_video_enhance.h"
 #include "mdp4_video_tuning.h"
@@ -55,8 +57,7 @@
 u8 mDNIe_data[MAX_LUT_SIZE * 3];
 
 /* For brightness scaling */
-static unsigned int color_scaling_factors[3] = { 256, 256, 256 };
-static unsigned int trinity_colors = 0;
+static unsigned int scaling_factors[3] = { 256, 256, 256 };
 
 int play_speed_1_5;
 #if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_HD_PT) || \
@@ -336,7 +337,7 @@ void lut_tune(int num, u8 *pLutTable)
 	b = cmap->blue;
 	/* Assigning the cmap */
 #define calc(dest, idx) \
-	tmp = pLutTable[j++] * color_scaling_factors[idx]; \
+	tmp = pLutTable[j++] * scaling_factors[idx]; \
 	dest = tmp / 256 + (tmp & 128 ? 1 : 0);
 	for (i = 0, j = 0; i < cmap->len; i++) {
 		calc(*r++, 0);
@@ -829,66 +830,11 @@ static DEVICE_ATTR(playspeed, 0664,
 			playspeed_show,
 			playspeed_store);
 
-/* For brightness scaling */
-static ssize_t scaling_factors_show(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	DPRINT("called %s\n", __func__);
-	return sprintf(buf, "%u %u %u\n",
-		color_scaling_factors[0],
-		color_scaling_factors[1],
-		color_scaling_factors[2]);
-}
-
-static ssize_t scaling_factors_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t size)
-{
-	unsigned int r, g, b;
-	int ret;
-	ret = sscanf(buf, "%u %u %u", &r, &g, &b);
-	if (ret != 3)
-		return -EINVAL;
-	if (r > 256 || g > 256 || b > 256)
-		return -EINVAL;
-	color_scaling_factors[0] = r;
-	color_scaling_factors[1] = g;
-	color_scaling_factors[2] = b;
-	mDNIe_Set_Mode(current_mDNIe_Mode);
-	return size;
-}
-static DEVICE_ATTR(scaling_factors, 0664,
-			scaling_factors_show,
-			scaling_factors_store);
-
-extern void panel_load_colors(unsigned int val);
 extern void mipi_bump_gamma(void);
 
-static ssize_t trinity_colors_show(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	DPRINT("called %s\n", __func__);
-	return sprintf(buf, "%u\n", trinity_colors);
-}
-
-static ssize_t trinity_colors_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t size)
-{
-	int ret;
-	ret = sscanf(buf, "%u", &trinity_colors);
-	if (ret != 1)
-		return -EINVAL;
-	panel_load_colors(trinity_colors ? 0 : 2);
-	mipi_bump_gamma();
-	return size;
-}
-
-static DEVICE_ATTR(trinity_colors, 0664,
-			trinity_colors_show,
-			trinity_colors_store);
+/* For brightness scaling */
+static void bump_mdnie(void) { mDNIe_Set_Mode(current_mDNIe_Mode); }
+static __GATTR_ARR(scaling_factors, 0, 256, bump_mdnie);
 
 void init_mdnie_class(void)
 {
@@ -947,14 +893,11 @@ void init_mdnie_class(void)
 			dev_attr_playspeed.attr.name);
 
 	if (device_create_file
-		(tune_mdnie_dev, &dev_attr_scaling_factors) < 0)
+		(tune_mdnie_dev, gen_tattr(device, scaling_factors)) < 0)
 		pr_err("Failed to create device file(%s)!=n",
-			dev_attr_scaling_factors.attr.name);
+			gen_attr(scaling_factors).name);
+	dkp_register(scaling_factors);
 
-	if (device_create_file
-		(tune_mdnie_dev, &dev_attr_trinity_colors) < 0)
-		pr_err("Failed to create device file(%s)!=n",
-			dev_attr_trinity_colors.attr.name);
 #ifdef MDP4_VIDEO_ENHANCE_TUNING
 	if (device_create_file(tune_mdnie_dev, &dev_attr_tuning) < 0) {
 		pr_err("Failed to create device file(%s)!\n",

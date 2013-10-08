@@ -12,7 +12,7 @@
 
 #include <linux/lcd.h>
 #include <linux/wakelock.h>
-#include <linux/dkp.h>
+#include <linux/gen_attr.h>
 #include "mipi_samsung_oled.h"
 #include "mdp4.h"
 #ifdef CONFIG_SAMSUNG_CMC624
@@ -30,8 +30,8 @@
 #include "mdp4_video_enhance.h"
 #endif
 
-unsigned int panel_colors = 2;
-extern void panel_load_colors(unsigned int val);
+extern int enable_panel_shift;
+extern int panel_shift_coeff;
 extern void mipi_bump_gamma(void);
 
 static struct mipi_samsung_driver_data msd;
@@ -1338,11 +1338,33 @@ static DEVICE_ATTR(auto_brightness, S_IRUGO | S_IWUSR | S_IWGRP,
 
 #endif
 
-static void panel_colors_update(void) {
-	panel_load_colors(panel_colors);
-	mipi_bump_gamma();
+static int panel_colors_get(void *ptr) {
+	return (20 - panel_shift_coeff) / 10;
 }
-static __DKP(panel_colors, 0, 4, panel_colors_update);
+static void panel_colors_set(void *ptr, int val) {
+	panel_shift_coeff = 20 - val * 10;
+}
+static struct gen_attr gattr_panel_colors = {
+	.attr = { .name = "panel_colors", .mode = 0644 },
+	.show = gattr_generic_show, .store = gattr_generic_store,
+	.min = 0, .max = 4, .cnt = 1,
+	.set = panel_colors_set, .get = panel_colors_get,
+	.cb = mipi_bump_gamma
+};
+struct gen_attr gattr_mdnie_mcm_temperature = {
+	.attr = { .name = "mcm_temperature", .mode = 0644 },
+	.show = gattr_generic_show, .store = gattr_generic_store,
+	.min = -20, .max = 20, .cnt = 1,
+	.ptr = &panel_shift_coeff,
+	.cb = mipi_bump_gamma
+};
+struct gen_attr gattr_mdnie_mcm = {
+	.attr = { .name = "s_MCM", .mode = 0644 },
+	.show = gattr_generic_show, .store = gattr_generic_store,
+	.min = 0, .max = 1, .cnt = 1,
+	.ptr = &enable_panel_shift,
+	.cb = mipi_bump_gamma
+};
 
 #ifdef READ_REGISTER_ESD
 #define ID_E5H_IDLE 0x80
@@ -1529,8 +1551,7 @@ static int __devinit mipi_samsung_disp_probe(struct platform_device *pdev)
 	}
 
 	ret = sysfs_create_file(&lcd_device->dev.kobj,
-					&dkp_attr(panel_colors));
-	dkp_register(panel_colors);
+					&gen_attr(panel_colors));
 
 #if defined(CONFIG_BACKLIGHT_CLASS_DEVICE)
 	bd = backlight_device_register("panel", &lcd_device->dev,

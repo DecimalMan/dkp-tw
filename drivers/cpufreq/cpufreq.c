@@ -30,6 +30,7 @@
 #include <linux/mutex.h>
 #include <linux/syscore_ops.h>
 #include <linux/sched.h>
+#include <linux/gen_attr.h>
 #include <linux/dkp.h>
 
 #include <trace/events/power.h>
@@ -517,7 +518,7 @@ static ssize_t store_##file_name					\
 }
 
 static int dont_touch_my_shit = 0;
-static __DKP(dont_touch_my_shit, 0, 1, NULL);
+static __GATTR(dont_touch_my_shit, 0, 1, NULL);
 
 static ssize_t store_scaling_min_freq
 (struct cpufreq_policy *policy, const char *buf, size_t count)
@@ -691,20 +692,20 @@ int hotplug_sampling_rate = 2000 / HZ;
 int __used hotplug_enable_all_threshold = 1000;
 int hotplug_enable_one_threshold = 250;
 int hotplug_disable_one_threshold = 125;
-static __DKP(hotplug_intpulse, 0, 1, NULL);
-static __DKP(hotplug_sampling_periods, 2, 15, NULL);
-static __DKP(hotplug_sampling_rate, 1, 10, NULL);
-//static __DKP(hotplug_enable_all_threshold, 100, 1000, NULL);
-static __DKP(hotplug_enable_one_threshold, 100, 1000, NULL);
-static __DKP(hotplug_disable_one_threshold, 0, 1000, NULL);
+static __GATTR(hotplug_intpulse, 0, 1, NULL);
+static __GATTR(hotplug_sampling_periods, 2, 15, NULL);
+static __GATTR(hotplug_sampling_rate, 1, 10, NULL);
+//static __GATTR(hotplug_enable_all_threshold, 100, 1000, NULL);
+static __GATTR(hotplug_enable_one_threshold, 100, 1000, NULL);
+static __GATTR(hotplug_disable_one_threshold, 0, 1000, NULL);
 static struct attribute *hotplug_attrs[] = {
-        &dkp_attr(hotplug_intpulse),
-        &dkp_attr(hotplug_sampling_periods),
-        &dkp_attr(hotplug_sampling_rate),
-        //&dkp_attr(hotplug_enable_all_threshold),
-        &dkp_attr(hotplug_enable_one_threshold),
-        &dkp_attr(hotplug_disable_one_threshold),
-        NULL
+	&gen_attr(hotplug_intpulse),
+	&gen_attr(hotplug_sampling_periods),
+	&gen_attr(hotplug_sampling_rate),
+	//&gen_attr(hotplug_enable_all_threshold),
+	&gen_attr(hotplug_enable_one_threshold),
+	&gen_attr(hotplug_disable_one_threshold),
+	NULL
 };
 static struct attribute_group hotplug_attr_grp = {
     .attrs = hotplug_attrs,
@@ -719,6 +720,7 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 	unsigned int ret = -EINVAL;
 	char	str_governor[16];
 	struct cpufreq_policy new_policy;
+	bool need_hotplug = 0;
 
 	ret = cpufreq_get_policy(&new_policy, policy->cpu);
 	if (ret)
@@ -732,6 +734,11 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 						&new_policy.governor))
 		return -EINVAL;
 
+	if (!policy->cpu &&
+	    policy->governor != new_policy.governor &&
+	    !(new_policy.governor->flags & BIT(GOVFLAGS_HOTPLUG)))
+		need_hotplug = 1;
+
 	/* Do not use cpufreq_set_policy here or the user_policy.max
 	   will be wrongly overridden */
 	ret = __cpufreq_set_policy(policy, &new_policy);
@@ -739,7 +746,7 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 	policy->user_policy.policy = policy->policy;
 	policy->user_policy.governor = policy->governor;
 
-	if (!policy->cpu && !(policy->governor->flags & BIT(GOVFLAGS_HOTPLUG))) {
+	if (need_hotplug) {
 		hotplug_attr_grp.name = policy->governor->name;
 		sysfs_merge_group(cpufreq_global_kobject, &hotplug_attr_grp);
 	}
@@ -872,7 +879,7 @@ static ssize_t show_override_vmin(struct cpufreq_policy *policy, char *buf) {
 
 /* Control gov/min/max linking across cores */
 static int link_core_settings = 1;
-static __DKP(link_core_settings, 0, 1, NULL);
+static __GATTR(link_core_settings, 0, 1, NULL);
 
 /**
  * show_scaling_driver - show the current cpufreq HW/BIOS limitation

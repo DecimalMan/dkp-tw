@@ -49,30 +49,47 @@ int mpdecision_available(void) {
 }
 
 static void mpdecision_enable(int enable) {
-        if (enable != rq_info.init) {
-                if (enable) {
-                        cpu_up(1);
-                        rq_info.rq_poll_total_jiffies = 0;
-                        rq_info.rq_poll_last_jiffy = jiffies;
-                        rq_info.rq_avg = 0;
-                }
-                printk(KERN_DEBUG "rq-stats: rq_info.init = %i\n", enable);
-                rq_info.init = enable;
-        }
+	if (enable != rq_info.init) {
+		if (enable) {
+			rq_info.rq_poll_total_jiffies = 0;
+			rq_info.def_timer_last_jiffy =
+				rq_info.rq_poll_last_jiffy = jiffies;
+			rq_info.rq_avg = 0;
+			rq_info.def_start_time = ktime_to_ns(ktime_get());
+		}
+		printk(KERN_DEBUG "rq-stats: rq_info.init = %i\n", enable);
+		rq_info.init = enable;
+	}
 }
+
+static enum hp_state {
+	HP_DISABLE = 0,
+	HP_MPDEC,
+	HP_AUTOHP,
+	HP_CHECK
+} hotplug_enable = HP_MPDEC;
 
 extern void hotplug_disable(bool flag);
-static void rq_hotplug_enable(int enable) {
-        if (mpdecision_available()) {
-                mpdecision_enable(enable);
-                hotplug_disable(1);
-        } else {
-                mpdecision_enable(0);
-                hotplug_disable(!enable);
-        }
+static void rq_hotplug_enable(enum hp_state enable) {
+	if (enable == HP_CHECK)
+		enable = mpdecision_available() ? HP_MPDEC : HP_AUTOHP;
+
+	switch (enable) {
+	case HP_AUTOHP:
+		mpdecision_enable(0);
+		hotplug_disable(0);
+		break;
+	case HP_MPDEC:
+		mpdecision_enable(1);
+		hotplug_disable(1);
+		break;
+	default:
+		mpdecision_enable(0);
+		hotplug_disable(1);
+		break;
+	}
 }
 
-static int hotplug_enable = 1;
 static struct delayed_work mpd_work;
 static void do_hotplug_enable(struct work_struct *work) {
         rq_hotplug_enable(hotplug_enable);
@@ -80,9 +97,9 @@ static void do_hotplug_enable(struct work_struct *work) {
 
 // Give apps a second to start/stop mpdecision after setting governor
 void msm_rq_stats_enable(int enable) {
-        hotplug_enable = enable;
-        cancel_delayed_work_sync(&mpd_work);
-        schedule_delayed_work(&mpd_work, HZ);
+	hotplug_enable = enable ? HP_CHECK : HP_DISABLE;
+	cancel_delayed_work_sync(&mpd_work);
+	schedule_delayed_work(&mpd_work, HZ);
 }
 
 static void def_work_fn(struct work_struct *work)
@@ -103,9 +120,9 @@ static void def_work_fn(struct work_struct *work)
 	/* XXX this sucks.  On AOSP, we have hotplug_disabled to notify us that
 	 * mpdecision is suspended.
 	 */
-	if (unlikely(!(rq_info.rq_poll_total_jiffies & 511))) {
+	if (unlikely(rq_info.def_interval > 5000)) {
 		printk(KERN_DEBUG "rq-stats: where's mpdecision? migrating to auto-hotplug\n");
-		rq_hotplug_enable(1);
+		rq_hotplug_enable(HP_AUTOHP);
 	}
 }
 
@@ -211,7 +228,7 @@ static ssize_t show_run_queue_avg(struct kobject *kobj,
          */
         if (unlikely(!rq_info.init)) {
                 printk(KERN_DEBUG "rq-stats: here comes mpdecision! stopping auto-hotplug\n");
-                rq_hotplug_enable(1);
+                rq_hotplug_enable(HP_MPDEC);
         }
 
 	spin_lock_irqsave(&rq_lock, flags);
@@ -328,6 +345,11 @@ static int init_rq_attribs(void)
 	for (i = 0; i < attr_count - 1 ; i++) {
 		if (!attribs[i])
 			goto rel2;
+	}
+
+	if (unlikely(!rq_info.init)) {
+		printk(KERN_DEBUG "rq-stats: here comes mpdecision! stopping auto-hotplug\n");
+		rq_hotplug_enable(HP_MPDEC);
 	}
 
 	rq_info.attr_group = kzalloc(sizeof(struct attribute_group),

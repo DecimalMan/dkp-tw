@@ -29,7 +29,11 @@
 #include <proto/p2p.h>
 
 struct wl_priv;
+#ifdef ENABLE_CRAP
 extern u32 wl_dbg_level;
+#else
+#define wl_dbg_level (0)
+#endif
 
 typedef struct wifi_p2p_ie wifi_wfd_ie_t;
 /* Enumeration of the usages of the BSSCFGs used by the P2P Library.  Do not
@@ -187,8 +191,13 @@ extern bool
 wl_cfgp2p_is_p2p_action(void *frame, u32 frame_len);
 extern bool
 wl_cfgp2p_is_gas_action(void *frame, u32 frame_len);
+#ifdef ENABLE_CRAP
 extern void
 wl_cfgp2p_print_actframe(bool tx, void *frame, u32 frame_len);
+#else
+static inline void
+wl_cfgp2p_print_actframe(bool tx, void *frame, u32 frame_len) { }
+#endif
 extern s32
 wl_cfgp2p_init_priv(struct wl_priv *wl);
 extern void
