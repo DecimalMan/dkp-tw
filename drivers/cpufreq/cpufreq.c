@@ -520,6 +520,10 @@ static ssize_t store_##file_name					\
 static int dont_touch_my_shit = 0;
 static __GATTR(dont_touch_my_shit, 0, 1, NULL);
 
+#ifdef CONFIG_INTERACTION_HINTS
+static bool handle_interaction = 0;
+#endif
+
 static ssize_t store_scaling_min_freq
 (struct cpufreq_policy *policy, const char *buf, size_t count)
 {
@@ -750,6 +754,8 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 		hotplug_attr_grp.name = policy->governor->name;
 		sysfs_merge_group(cpufreq_global_kobject, &hotplug_attr_grp);
 	}
+
+	handle_interaction = 1;
 
 	if (ret)
 		return ret;
@@ -2151,6 +2157,13 @@ static DECLARE_WORK(interactivity_off_work, do_interactivity);
 
 static void do_interactivity(struct work_struct *work) {
 	unsigned int j;
+
+	/* On TW, interactivity gets bumped during early boot, and trying to
+	 * lock the rwsems deadlocks.  Bail out early if the governor hasn't
+	 * been changed yet (i.e. init.qcom.post_boot.sh hasn't run).
+	 */
+	if (unlikely(!handle_interaction))
+		return;
 
 	for_each_online_cpu(j) {
 		struct cpufreq_policy *pol;
