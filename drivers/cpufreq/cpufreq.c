@@ -755,7 +755,9 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 		sysfs_merge_group(cpufreq_global_kobject, &hotplug_attr_grp);
 	}
 
+#ifdef CONFIG_INTERACTION_HINTS
 	handle_interaction = 1;
+#endif
 
 	if (ret)
 		return ret;
