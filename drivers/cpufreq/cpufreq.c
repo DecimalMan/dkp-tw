@@ -449,7 +449,7 @@ static ssize_t show_##file_name				\
 show_one(cpuinfo_min_freq, cpuinfo.min_freq);
 show_one(cpuinfo_max_freq, cpuinfo.max_freq);
 show_one(cpuinfo_transition_latency, cpuinfo.transition_latency);
-show_one(scaling_min_freq, min);
+show_one(scaling_min_freq, user_policy.min);
 //show_one(scaling_max_freq, max);
 show_one(scaling_cur_freq, cur);
 #if defined(__MP_DECISION_PATCH__)
@@ -479,13 +479,11 @@ static int check_current_is_thermald(void) {
 static ssize_t show_scaling_max_freq(struct cpufreq_policy *policy, char *buf)
 {
 	int val = 0;
-	if (check_current_is_thermald()) {
-		if (policy->max == policy->user_policy.max)
+	if (check_current_is_thermald() &&
+		policy->max == policy->user_policy.max) {
 			val = 1512000;
-		else
-			val = policy->max;
 	} else {
-		val = policy->max;
+		val = policy->user_policy.max;
 	}
 	return sprintf(buf, "%u\n", val);
 }
@@ -2256,7 +2254,8 @@ out_unlock:
 	return ret;
 }
 
-static int cpufreq_set_limits(int cpu, unsigned int min, unsigned int max)
+static int cpufreq_set_limits(int cpu, unsigned int min, unsigned int max,
+	bool update_user)
 {
 	struct cpufreq_policy *policy = NULL;
 	struct cpufreq_policy new_policy;
@@ -2282,13 +2281,11 @@ static int cpufreq_set_limits(int cpu, unsigned int min, unsigned int max)
 	if (max < policy->min) {
 		new_policy.min = max;
 		ret = __cpufreq_set_policy(policy, &new_policy);
-		policy->user_policy.min = policy->min;
 	}
 
 	if (min > policy->max) {
 		new_policy.max = min;
 		ret = __cpufreq_set_policy(policy, &new_policy);
-		policy->user_policy.max = policy->max;
 	}
 
 	new_policy.min = min;
@@ -2296,8 +2293,10 @@ static int cpufreq_set_limits(int cpu, unsigned int min, unsigned int max)
 
 	ret = __cpufreq_set_policy(policy, &new_policy);
 
-	policy->user_policy.min = policy->min;
-	policy->user_policy.max = policy->max;
+	if (update_user) {
+		policy->user_policy.min = policy->min;
+		policy->user_policy.max = policy->max;
+	}
 
 unlock:
 	unlock_policy_rwsem_write(policy->cpu);
@@ -2316,6 +2315,7 @@ int cpufreq_set_limit(unsigned int flag, unsigned int value)
 {
 	unsigned int max_value = 0;
 	unsigned int min_value = 0;
+	bool update_user = false;
 
 	if (!flag) {
 		printk(KERN_ERR"%s: invalid flag %d\n",
@@ -2334,14 +2334,19 @@ int cpufreq_set_limit(unsigned int flag, unsigned int value)
 		app_min_freq_limit = value;
 	else if (flag == APPS_MIN_STOP)
 		app_min_freq_limit = MIN_FREQ_LIMIT;
-	else if (flag == USER_MAX_START)
+	else if (flag == USER_MAX_START) {
 		user_max_freq_limit = value;
-	else if (flag == USER_MAX_STOP)
-		user_max_freq_limit = MAX_FREQ_LIMIT;
-	else if (flag == USER_MIN_START)
+		update_user = true;
+	} else if (flag == USER_MAX_STOP) {
+		user_max_freq_limit = value;
+		update_user = true;
+	} else if (flag == USER_MIN_START) {
 		user_min_freq_limit = value;
-	else if (flag == USER_MIN_STOP)
-		user_min_freq_limit = MIN_FREQ_LIMIT;
+		update_user = true;
+	} else if (flag == USER_MIN_STOP) {
+		user_min_freq_limit = value;
+		update_user = true;
+	}
 
 	/*  set/clear bits */
 	if (flag%10 == 0)
@@ -2399,8 +2404,8 @@ int cpufreq_set_limit(unsigned int flag, unsigned int value)
 	mutex_unlock(&set_cpu_freq_lock);
 
 	/* update min/max */
-	cpufreq_set_limits(BOOT_CPU, min_value, max_value);
-	cpufreq_set_limits(NON_BOOT_CPU, min_value, max_value);
+	cpufreq_set_limits(BOOT_CPU, min_value, max_value, update_user);
+	cpufreq_set_limits(NON_BOOT_CPU, min_value, max_value, update_user);
 
 	return 0;
 }
