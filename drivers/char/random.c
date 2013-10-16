@@ -281,10 +281,8 @@
 #include <asm/irq_regs.h>
 #include <asm/io.h>
 
-/*
 #define CREATE_TRACE_POINTS
 #include <trace/events/random.h>
-*/
 
 /*
  * Configuration information
@@ -563,6 +561,7 @@ static void _mix_pool_bytes(struct entropy_store *r, const void *in,
 static void __mix_pool_bytes(struct entropy_store *r, const void *in,
 			     int nbytes, __u8 out[64])
 {
+	trace_mix_pool_bytes_nolock(r->name, nbytes, _RET_IP_);
 	_mix_pool_bytes(r, in, nbytes, out);
 }
 
@@ -571,6 +570,7 @@ static void mix_pool_bytes(struct entropy_store *r, const void *in,
 {
 	unsigned long flags;
 
+	trace_mix_pool_bytes(r->name, nbytes, _RET_IP_);
 	spin_lock_irqsave(&r->lock, flags);
 	_mix_pool_bytes(r, in, nbytes, out);
 	spin_unlock_irqrestore(&r->lock, flags);
@@ -634,6 +634,9 @@ retry:
 		if (r->entropy_total > 128)
 			r->initialized = 1;
 	}
+
+	trace_credit_entropy_bits(r->name, nbits, entropy_count,
+				  r->entropy_total, _RET_IP_);
 
 	/* should we wake readers? */
 	if (r == &input_pool && entropy_count >= random_read_wakeup_thresh) {
@@ -761,7 +764,7 @@ EXPORT_SYMBOL_GPL(add_input_randomness);
 
 static DEFINE_PER_CPU(struct fast_pool, irq_randomness);
 
-void add_interrupt_randomness(int irq)
+void add_interrupt_randomness(int irq, int irq_flags)
 {
 	struct fast_pool	*fast_pool = &__get_cpu_var(irq_randomness);
 	struct pt_regs		*regs = get_irq_regs();
@@ -785,6 +788,19 @@ void add_interrupt_randomness(int irq)
 	fast_pool->last = now;
 
 	__mix_pool_bytes(&input_pool, &fast_pool->pool, sizeof(fast_pool->pool), NULL);
+	/*
+	 * If we don't have a valid cycle counter, and we see
+	 * back-to-back timer interrupts, then skip giving credit for
+	 * any entropy.
+	 */
+	if (cycles == 0) {
+		if (irq_flags & __IRQF_TIMER) {
+			if (fast_pool->last_timer_intr)
+				return;
+			fast_pool->last_timer_intr = 1;
+		} else
+			fast_pool->last_timer_intr = 0;
+	}
 	credit_entropy_bits(&input_pool, 1);
 }
 
@@ -960,6 +976,7 @@ static ssize_t extract_entropy(struct entropy_store *r, void *buf,
 	ssize_t ret = 0, i;
 	__u8 tmp[EXTRACT_SIZE];
 
+	trace_extract_entropy(r->name, nbytes, r->entropy_count, _RET_IP_);
 	xfer_secondary_pool(r, nbytes);
 	nbytes = account(r, nbytes, min, reserved);
 
@@ -994,6 +1011,7 @@ static ssize_t extract_entropy_user(struct entropy_store *r, void __user *buf,
 	ssize_t ret = 0, i;
 	__u8 tmp[EXTRACT_SIZE];
 
+	trace_extract_entropy_user(r->name, nbytes, r->entropy_count, _RET_IP_);
 	xfer_secondary_pool(r, nbytes);
 	nbytes = account(r, nbytes, 0, 0);
 
@@ -1060,6 +1078,7 @@ void get_random_bytes_arch(void *buf, int nbytes)
 {
 	char *p = buf;
 
+	trace_get_random_bytes(nbytes, _RET_IP_);
 	while (nbytes) {
 		unsigned long v;
 		int chunk = min(nbytes, (int)sizeof(unsigned long));
