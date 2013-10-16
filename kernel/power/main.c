@@ -16,7 +16,7 @@
 #include "power.h"
 #include <linux/cpufreq.h>
 #include <linux/rq_stats.h>
-#include <linux/dkp.h>
+#include <linux/gen_attr.h>
 
 DEFINE_MUTEX(pm_mutex);
 
@@ -479,8 +479,8 @@ power_attr(cpufreq_min_limit);
 #else
 // Dummy attributes
 static int cpufreq_min_limit, cpufreq_max_limit;
-static __DKP(cpufreq_min_limit, -1, MAX_FREQ_LIMIT, NULL);
-static __DKP(cpufreq_max_limit, -1, MAX_FREQ_LIMIT, NULL);
+static __GATTR(cpufreq_min_limit, -1, MAX_FREQ_LIMIT, NULL);
+static __GATTR(cpufreq_max_limit, -1, MAX_FREQ_LIMIT, NULL);
 #endif
 static ssize_t cpufreq_table_show(struct kobject *kobj,
 			struct kobj_attribute *attr, char *buf)
