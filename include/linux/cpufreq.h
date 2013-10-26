@@ -351,7 +351,7 @@ static inline unsigned int cpufreq_quick_get(unsigned int cpu)
 
 
 #define BOOT_FREQ_LIMIT 1512000
-#define MIN_FREQ_LIMIT 384000
+#define MIN_FREQ_LIMIT 54000
 #define MAX_FREQ_LIMIT 2106000
 
 #ifdef CONFIG_SEC_DVFS

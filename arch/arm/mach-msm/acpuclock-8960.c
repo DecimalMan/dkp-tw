@@ -11,7 +11,7 @@
  */
 
 #define ALLOW_OC_STEPS
-#define FREQ_TABLE_SIZE 33
+#define FREQ_TABLE_SIZE 39
 #define MAX_BUS_LVL 7
 //#define ENABLE_VMIN
 //#define EXTRA_TABLES
@@ -365,6 +365,7 @@ static struct scalable *scalable;
 static struct l2_level *l2_freq_tbl;
 static struct acpu_level *acpu_freq_tbl;
 static int l2_freq_tbl_size;
+static unsigned int nom_min_vdd;
 uint32_t global_pvs; /*  This code is temporary code */
 
 /* Instantaneous bandwidth requests in MB/s. */
@@ -764,7 +765,13 @@ static struct l2_level l2_freq_tbl_8960_kraitv2[] = {
 };
 
 static struct acpu_level acpu_freq_tbl_8960_kraitv2_slow[] = {
-	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   950000 },
+	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   900000 },
+	{ 1, {    54000, HFPLL, 2, 0, 0x04 }, L2(1),   900000 },
+	{ 1, {   108000, HFPLL, 2, 0, 0x08 }, L2(1),   900000 },
+	{ 1, {   162000, HFPLL, 2, 0, 0x0C }, L2(1),   900000 },
+	{ 1, {   216000, HFPLL, 2, 0, 0x10 }, L2(1),   925000 },
+	{ 1, {   270000, HFPLL, 2, 0, 0x14 }, L2(1),   925000 },
+	{ 1, {   324000, HFPLL, 2, 0, 0x18 }, L2(1),   950000 },
 	{ 1, {   384000, PLL_8, 0, 2, 0x00 }, L2(1),   950000 },
 	{ 1, {   432000, HFPLL, 2, 0, 0x20 }, L2(7),   975000 },
 	{ 1, {   486000, HFPLL, 2, 0, 0x24 }, L2(7),   975000 },
@@ -804,7 +811,13 @@ static struct acpu_level acpu_freq_tbl_8960_kraitv2_slow[] = {
 };
 
 static struct acpu_level acpu_freq_tbl_8960_kraitv2_nom[] = {
-	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   900000 },
+	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   850000 },
+	{ 1, {    54000, HFPLL, 2, 0, 0x04 }, L2(1),   850000 },
+	{ 1, {   108000, HFPLL, 2, 0, 0x08 }, L2(1),   850000 },
+	{ 1, {   162000, HFPLL, 2, 0, 0x0C }, L2(1),   850000 },
+	{ 1, {   216000, HFPLL, 2, 0, 0x10 }, L2(1),   875000 },
+	{ 1, {   270000, HFPLL, 2, 0, 0x14 }, L2(1),   875000 },
+	{ 1, {   324000, HFPLL, 2, 0, 0x18 }, L2(1),   900000 },
 	{ 1, {   384000, PLL_8, 0, 2, 0x00 }, L2(1),   900000 },
 	{ 1, {   432000, HFPLL, 2, 0, 0x20 }, L2(7),   925000 },
 	{ 1, {   486000, HFPLL, 2, 0, 0x24 }, L2(7),   925000 },
@@ -844,7 +857,13 @@ static struct acpu_level acpu_freq_tbl_8960_kraitv2_nom[] = {
 };
 
 static struct acpu_level acpu_freq_tbl_8960_kraitv2_fast[] = {
-	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   850000 },
+	{ 0, { STBY_KHZ, QSB,   0, 0, 0x00 }, L2(0),   800000 },
+	{ 1, {    54000, HFPLL, 2, 0, 0x04 }, L2(1),   800000 },
+	{ 1, {   108000, HFPLL, 2, 0, 0x08 }, L2(1),   800000 },
+	{ 1, {   162000, HFPLL, 2, 0, 0x0C }, L2(1),   800000 },
+	{ 1, {   216000, HFPLL, 2, 0, 0x10 }, L2(1),   825000 },
+	{ 1, {   270000, HFPLL, 2, 0, 0x14 }, L2(1),   825000 },
+	{ 1, {   324000, HFPLL, 2, 0, 0x18 }, L2(1),   850000 },
 	{ 1, {   384000, PLL_8, 0, 2, 0x00 }, L2(1),   850000 },
 	{ 1, {   432000, HFPLL, 2, 0, 0x20 }, L2(7),   875000 },
 	{ 1, {   486000, HFPLL, 2, 0, 0x24 }, L2(7),   875000 },
@@ -1470,7 +1489,15 @@ static int acpuclk_8960_set_rate(int cpu, unsigned long rate,
 
 	/* Increase VDD levels if needed. */
 	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG) {
-		rc = increase_vdd(cpu, vdd_core, vdd_mem, vdd_dig, reason);
+		/* During HFPLL reprogramming, we'll briefly switch to PLL8.
+		 * In the case where we're switching from one slower-than-PLL8
+		 * frequency to another, we'll be running at an increased
+		 * frequency during this time, and need to guarantee that we're
+		 * running at a suitable voltage during this period.
+		 */
+		unsigned int apply_vdd_core = vdd_core > nom_min_vdd ?
+			vdd_core : nom_min_vdd;
+		rc = increase_vdd(cpu, apply_vdd_core, vdd_mem, vdd_dig, reason);
 		if (rc)
 			goto out;
 	}
@@ -1904,6 +1931,17 @@ static struct acpu_level * __init select_freq_plan(void)
 }
 
 /* UV Stuff */
+static void acpuclk_update_nom_min(void) {
+	struct acpu_level *l;
+	for (l = acpu_freq_tbl; l->speed.khz; l++) {
+		if (l->speed.src == PLL_8) {
+			nom_min_vdd = l->vdd_core;
+			printk(KERN_DEBUG "%s: new nominal vdd is %u\n",
+				__func__, l->vdd_core);
+			break;
+		}
+	}
+}
 static int acpuclk_update_vdd_table(int num, unsigned int table[]) {
 	int i, dir;
 	struct acpu_level *tgt;
@@ -1952,7 +1990,7 @@ static int acpuclk_update_all_vdd(int adj) {
 	if (v > 1400000 || v < 700000) \
 		return -EINVAL;
 /* My kingdom for a regular expression! */
-ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
+static ssize_t _acpuclk_store_vdd_table(const char *buf, size_t count) {
 	unsigned int freq, volt;
 	int adjust, ret, idx, len, thislen;
 	char mhz_label[5], mv_label[3];
@@ -2018,6 +2056,11 @@ ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
 	printk(KERN_DEBUG "acpuclk: don't know what this is:\n");
 	printk(KERN_DEBUG "acpuclk: %s\n", buf);
 	return -EINVAL;
+}
+ssize_t acpuclk_store_vdd_table(const char *buf, size_t count) {
+	ssize_t ret = _acpuclk_store_vdd_table(buf, count);
+	acpuclk_update_nom_min();
+	return ret;
 }
 ssize_t acpuclk_show_vdd_table(char *buf, char *fmt, int dir, int fdiv, int vdiv) {
 	int len = 0;
@@ -2157,6 +2200,7 @@ static int __init acpuclk_8960_init(struct acpuclk_soc_data *soc_data)
 
 	acpuclk_register(&acpuclk_8960_data);
 	register_hotcpu_notifier(&acpuclock_cpu_notifier);
+	acpuclk_update_nom_min();
 
 	if (sysfs_create_group(cpufreq_global_kobject, &dkp_attr_group))
 		pr_err("Unable to create dkp group!\n");
