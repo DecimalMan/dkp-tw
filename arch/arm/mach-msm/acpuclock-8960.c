@@ -1935,9 +1935,11 @@ static void acpuclk_update_nom_min(void) {
 	struct acpu_level *l;
 	for (l = acpu_freq_tbl; l->speed.khz; l++) {
 		if (l->speed.src == PLL_8) {
-			nom_min_vdd = l->vdd_core;
-			printk(KERN_DEBUG "%s: new nominal vdd is %u\n",
-				__func__, l->vdd_core);
+			if (nom_min_vdd != l->vdd_core) {
+				printk(KERN_DEBUG "%s: new nominal vdd is %u\n",
+					__func__, l->vdd_core);
+				nom_min_vdd = l->vdd_core;
+			}
 			break;
 		}
 	}
@@ -2119,16 +2121,22 @@ void acpuclk_enable_oc_freqs(unsigned int freq) {
 	cpufreq_table_init(0);
 }
 
-void acpuclk_set_override_vmin(int enable) {
-	if (enable) {
-		final_vmin = krait_needs_vmin() ?
-			1150000 : 700000;
-	} else {
-		final_vmin = 700000;
-	}
+static ssize_t store_override_vmin(struct cpufreq_policy *policy,
+                                        const char *buf, size_t count) {
+        int val;
+        if (sscanf(buf, "%i", &val) != 1)
+                return -EINVAL;
+	final_vmin = val ? 1150000 : 700000;
+        return count;
 }
-int acpuclk_get_override_vmin(void) {
-	return final_vmin >= 1150000;
+static ssize_t show_override_vmin(struct cpufreq_policy *policy, char *buf) {
+        return sprintf(buf, "%u\n", final_vmin >= 1150000);
+}
+cpufreq_freq_attr_rw(override_vmin);
+
+void acpuclk_maybe_add_override_vmin(struct kobject *kobj) {
+	if (kobj && krait_needs_vmin())
+		sysfs_create_file(kobj, &override_vmin.attr);
 }
 
 static ssize_t store_vmin(struct kobject *kobj, struct attribute *attr,
