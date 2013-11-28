@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2011, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -52,6 +52,7 @@ enum msm_cpu {
 	MSM_CPU_8X55,
 	MSM_CPU_8X60,
 	MSM_CPU_8960,
+	MSM_CPU_8960AB,
 	MSM_CPU_7X27A,
 	FSM_CPU_9XXX,
 	MSM_CPU_7X25A,
@@ -91,6 +92,7 @@ const int cpu_is_krait_v2(void);
 #define cpu_is_msm8x55() (0)
 #define cpu_is_msm8x60() (0)
 #define cpu_is_msm8960() (1)
+#define cpu_is_msm8960ab() (0)
 #define cpu_is_apq8064() (0)
 #define cpu_is_msm8930() (0)
 #define cpu_is_msm8627() (0)

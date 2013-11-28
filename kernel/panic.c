@@ -57,6 +57,9 @@ static long no_blink(int state)
 {
 	return 0;
 }
+#ifdef CONFIG_SAMSUNG_DEBUG_DISPLAY
+void dump_event_code(void);
+#endif
 
 /* Returns how long it waited in ms */
 long (*panic_blink)(int state);
@@ -91,6 +94,9 @@ NORET_TYPE void panic(const char * fmt, ...)
 	 * preempt to be disabled. No point enabling it later though...
 	 */
 	preempt_disable();
+#ifdef CONFIG_SAMSUNG_DEBUG_DISPLAY
+	dump_event_code();
+#endif
 	console_verbose();
 	bust_spinlocks(1);
 	va_start(args, fmt);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -55,6 +55,13 @@
 #include <mach/sec_debug.h>
 #endif
 
+#include <mach/gpiomux.h>
+#include <linux/regulator/consumer.h>
+
+#ifdef CONFIG_SEC_GPIO_DVS
+#include <linux/secgpio_dvs.h>
+#endif
+
 /******************************************************************************
  * Debug Definitions
  *****************************************************************************/
@@ -81,6 +88,9 @@ module_param_named(
 #define msm_pm_debug_mask (0)
 #endif
 
+static int msm_pm_sleep_sec_debug;
+module_param_named(secdebug,
+	msm_pm_sleep_sec_debug, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 /******************************************************************************
  * Sleep Modes and Parameters
@@ -1179,7 +1189,28 @@ enter_exit:
 	return 0;
 }
 
+int msm_suspend_prepare(void)
+{
+
+#ifdef CONFIG_SEC_GPIO_DVS
+	/************************ Caution !!! ****************************/
+	/* This function must be located in appropriate SLEEP position
+	 * in accordance with the specification of each BB vendor.
+	 */
+	/************************ Caution !!! ****************************/
+	gpio_dvs_check_sleepgpio();
+#endif
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	regulator_showall_enabled();
+	if (msm_pm_sleep_sec_debug)
+		msm_gpio_print_enabled();
+#endif
+	return 0;
+}
+
 static struct platform_suspend_ops msm_pm_ops = {
+	.prepare_late = msm_suspend_prepare,
 	.enter = msm_pm_enter,
 	.valid = suspend_valid_only_mem,
 };

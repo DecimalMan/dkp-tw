@@ -352,6 +352,7 @@ void lut_tune(int num, u8 *pLutTable)
 	r = cmap->red;
 	g = cmap->green;
 	b = cmap->blue;
+	mdp_clk_ctrl(1);
 	for (i = 0; i < cmap->len; i++) {
 		r_1 = *r++;
 		g_1 = *g++;
@@ -369,6 +370,11 @@ void lut_tune(int num, u8 *pLutTable)
 
 	mfd = (struct msm_fb_data_type *) registered_fb[0]->par;
 	if (mfd->panel.type == MIPI_CMD_PANEL) {
+#if defined(CONFIG_FB_MSM_MIPI_NOVATEK_CMD_WVGA_PT) \
+			|| defined(CONFIG_FB_MSM_MIPI_NOVATEK_BOE_CMD_WVGA_PT) \
+			|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT)
+		mdp_clk_ctrl(0);
+#endif
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 		mutex_lock(&mdp_lut_push_sem);
 		mdp_lut_push = 1;
@@ -378,6 +384,11 @@ void lut_tune(int num, u8 *pLutTable)
 		/*mask off non LUT select bits*/
 		out = inpdw(MDP_BASE + 0x90070) & ~((0x1 << 10) | 0x7);
 		MDP_OUTP(MDP_BASE + 0x90070, (mdp_lut_i << 10) | 0x7 | out);
+#if defined(CONFIG_FB_MSM_MIPI_NOVATEK_CMD_WVGA_PT) \
+					|| defined(CONFIG_FB_MSM_MIPI_NOVATEK_BOE_CMD_WVGA_PT) \
+					|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT)
+		mdp_clk_ctrl(0);
+#endif
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	}
 
@@ -715,8 +726,9 @@ static ssize_t mdnieset_init_file_cmd_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
-	char temp[]="mdnieset_init_file_cmd_show\n\0";
+	char temp[15];
 	DPRINT("called %s\n", __func__);
+	sprintf(temp, "mdnieset_init_file_cmd_show\n");
 	strcat(buf, temp);
 	return strlen(buf);
 }

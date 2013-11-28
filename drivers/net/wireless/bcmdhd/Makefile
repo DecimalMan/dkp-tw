@@ -18,12 +18,15 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER             \
 #################
 
 DHDCFLAGS += -DCUSTOMER_HW4
-DHDCFLAGS += -DBLOCK_IPV6_PACKET -DPASS_IPV4_SUSPEND
+DHDCFLAGS += -DPASS_IPV4_SUSPEND
 DHDCFLAGS += -DSUPPORT_DEEP_SLEEP
 DHDCFLAGS += -DSIMPLE_MAC_PRINT
 
 # Print out kernel panic point of file and line info when assertion happened
 DHDCFLAGS += -DBCMASSERT_LOG
+
+# Print 8021X
+DHDCFLAGS += -DDHD_8021X_DUMP
 
 # For p2p connection issue
 DHDCFLAGS += -DWL_CFG80211_GON_COLLISION
@@ -42,7 +45,7 @@ DHDCFLAGS += -DESCAN_RESULT_PATCH
 DHDCFLAGS += -DDUAL_ESCAN_RESULT_BUFFER
 
 DHDCFLAGS += -DROAM_ENABLE -DROAM_CHANNEL_CACHE -DROAM_API
-DHDCFLAGS += -DDISABLE_FW_ROAM_SUSPEND
+DHDCFLAGS += -DENABLE_FW_ROAM_SUSPEND
 
 # For Static Buffer
 ifeq ($(CONFIG_BROADCOM_WIFI_RESERVED_MEM),y)
@@ -62,6 +65,7 @@ DHDCFLAGS += -DWL_CFG80211
 DHDCFLAGS += -DSUPPORT_AUTO_CHANNEL -DSUPPORT_HIDDEN_AP
 DHDCFLAGS += -DSUPPORT_SOFTAP_SINGL_DISASSOC
 DHDCFLAGS += -DUSE_STAMAC_4SOFTAP
+DHDCFLAGS += -DDISABLE_11H_SOFTAP
 
 # DPC priority
 DHDCFLAGS += -DCUSTOM_DPC_PRIO_SETTING=98
@@ -78,8 +82,8 @@ DHDCFLAGS += -DPKTPRIO_OVERRIDE
 # Ioctl timeout 5000ms
 DHDCFLAGS += -DIOCTL_RESP_TIMEOUT=5000
 
-# WiFi Kernel thread type
-DHDCFLAGS += -DUSE_KTHREAD_API
+# Used short dwell time during initial scan
+DHDCFLAGS += -DUSE_INITIAL_SHORT_DWELL_TIME
 
 ############
 # JellyBean
@@ -87,6 +91,18 @@ DHDCFLAGS += -DUSE_KTHREAD_API
 DHDCFLAGS += -DWL_ENABLE_P2P_IF
 DHDCFLAGS += -DMULTIPLE_SUPPLICANT
 DHDCFLAGS += -DWL_CFG80211_STA_EVENT
+
+#################
+# JellyBean Plus
+#################
+DHDCFLAGS += -DWL_SUPPORT_BACKPORTED_KPATCHES
+
+##########################
+# driver type
+# m: module type driver
+# y: built-in type driver
+##########################
+DRIVER_TYPE ?= m
 
 #########################
 # Chip dependent feature
@@ -104,15 +120,27 @@ ifneq ($(CONFIG_BCM4334),)
   DHDCFLAGS += -DCUSTOM_GLOM_SETTING=5 -DENABLE_BCN_LI_BCN_WAKEUP
   DHDCFLAGS += -DROAM_AP_ENV_DETECTION
   DHDCFLAGS += -DWES_SUPPORT
+  DHDCFLAGS += -DSUPPORT_WL_TXPOWER
+### "RXFRAME_THREAD" & "CUSTOM_DPC_CPUCORE" needs for latest kernel(3.4.39) ###
+  DHDCFLAGS += -DRXFRAME_THREAD
+  DHDCFLAGS += -DCUSTOM_DPC_CPUCORE=0
+ifeq ($(CONFIG_BCM4334),y)
+  DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
+  DRIVER_TYPE = y
+endif
+  DHDCFLAGS :=$(filter-out -DWL_CFG80211_GON_COLLISION,$(DHDCFLAGS))
 endif
 
 ifneq ($(CONFIG_BCM4330),)
-  DHDCFLAGS += -DBCM4330_CHIP
+  DHDCFLAGS += -DBCM4330_CHIP -DSUPPORT_MULTIPLE_REVISION
   DHDCFLAGS += -DMCAST_LIST_ACCUMULATION
   DHDCFLAGS += -DCONFIG_CONTROL_PM
   DHDCFLAGS += -DCUSTOM_GLOM_SETTING=0
-  DHDCFLAGS += -DPASS_ARP_PACKET
   DHDCFLAGS += -DWL_CFG80211_VSDB_PRIORITIZE_SCAN_REQUEST
+ifeq ($(CONFIG_BCM4330),y)
+  DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
+  DRIVER_TYPE = y
+endif
 endif
 
 ifneq ($(CONFIG_BCM43241),)
@@ -127,10 +155,16 @@ ifneq ($(CONFIG_BCM43241),)
   DHDCFLAGS += -DCUSTOM_GLOM_SETTING=1 -DCUSTOM_SDIO_F2_BLKSIZE=128
   DHDCFLAGS += -DROAM_AP_ENV_DETECTION
   DHDCFLAGS += -DSDIO_CRC_ERROR_FIX
-  ifeq ($(CONFIG_BCM43241),m)
-    DHDCFLAGS += -fno-pic
-  endif
+  DHDCFLAGS :=$(filter-out -DWL_CFG80211_GON_COLLISION,$(DHDCFLAGS))
+ifeq ($(CONFIG_BCM43241),m)
+  DHDCFLAGS += -fno-pic
 endif
+ifeq ($(CONFIG_BCM43241),y)
+  DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
+  DRIVER_TYPE = y
+endif
+endif
+
 
 #############################
 # Platform dependent feature
@@ -150,22 +184,13 @@ ifeq ($(CONFIG_SPI_SC8810),y)
   DHDCFLAGS :=$(filter-out -DWL_CFG80211_STA_EVENT,$(DHDCFLAGS))
 endif
 
-#For INITIAL 2G scan features
-ifneq ($(CONFIG_TARGET_LOCALE_KOR),y)
-  DHDCFLAGS += -DUSE_INITIAL_2G_SCAN
-endif
-
-#DHDCFLAGS += -DUSE_INITIAL_2G_SCAN
-ifneq ($(CONFIG_MACH_M2_KDI),y)
-DHDCFLAGS += -DUSE_INITIAL_2G_SCAN_ORG
-endif
-
 # For SLP feature
 ifeq ($(CONFIG_SLP),y)
-  DHDCFLAGS += -DPLATFORM_SLP
-  DHDCFLAGS += -UWL_ENABLE_P2P_IF
-  DHDCFLAGS += -UMULTIPLE_SUPPLICANT
-  DHDCFLAGS += -UWL_CFG80211_STA_EVENT
+  DHDCFLAGS += -DUSE_INITIAL_2G_SCAN
+  DHDCFLAGS += -DPLATFORM_SLP -DWRITE_MACADDR
+  ifeq ($( CONFIG_PM_WAKELOCKS),true)
+    DHDCFLAGS += -DCONFIG_HAS_WAKELOCK
+  endif 
 endif
 
 # GGSM_WIFI_5GHz_CHANNELS feature is define for only GGSM model
@@ -175,33 +200,6 @@ endif
 
 ##############################################################
 # dhd_sec_feature.h
-
-REGION_CODE := 100
-
-ifeq ($(CONFIG_TARGET_LOCALE_KOR),y)
-REGION_CODE=200
-endif
-
-ifeq ($(CONFIG_MACH_U1_KOR_KT), y)
-REGION_CODE=202
-endif
-
-ifeq ($(CONFIG_TARGET_LOCALE_CHN),y)
-REGION_CODE=300
-endif
-
-ifeq ($(SEC_MODEL_NAME),U1)
-ifeq ($(X_BUILD_LOCALE),EUR_ORG)
-REGION_CODE=101
-endif
-endif
-
-ifdef CONFIG_WLAN_REGION_CODE
-REGION_CODE=$(CONFIG_WLAN_REGION_CODE)
-endif
-
-DHDCFLAGS += -DWLAN_REGION_CODE=$(REGION_CODE)
-
 DHDCFLAGS += -include "dhd_sec_feature.h"
 ##############################################################
 
@@ -209,7 +207,7 @@ DHDCFLAGS += -include "dhd_sec_feature.h"
 # Others
 #########
 
-EXTRA_LDFLAGS += --strip-debug
+#EXTRA_LDFLAGS += --strip-debug
 
 EXTRA_CFLAGS += $(DHDCFLAGS)
 EXTRA_CFLAGS += -DSRCBASE=\"$(src)\"
@@ -232,7 +230,7 @@ DHDOFILES :=$(filter-out bcmsdh_sdmmc_linux.o,$(DHDOFILES))
 endif
 
 dhd-y := $(DHDOFILES)
-obj-m   += dhd.o
+obj-$(DRIVER_TYPE)   += dhd.o
 
 all:
 	@echo "$(MAKE) --no-print-directory -C $(KDIR) SUBDIRS=$(CURDIR) modules"
