@@ -3321,8 +3321,6 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		}
 	}
 
-	mdp4_stat.overlay_set[pipe->mixer_num]++;
-
 	if (pipe->flags & MDP_OVERLAY_PP_CFG_EN) {
 		if (pipe->pipe_num <= OVERLAY_PIPE_VG2)
 			memcpy(&pipe->pp_cfg, &req->overlay_pp_cfg,

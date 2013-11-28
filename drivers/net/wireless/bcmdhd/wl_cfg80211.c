@@ -112,10 +112,12 @@
 
 static struct device *cfg80211_parent_dev = NULL;
 struct wl_priv *wlcfg_drv_priv = NULL;
+#ifdef DHD_DEBUG
 #ifdef CUSTOMER_HW4
 u32 wl_dbg_level = WL_DBG_ERR | WL_DBG_P2P_ACTION;
 #else
 u32 wl_dbg_level = WL_DBG_ERR;
+#endif
 #endif
 
 #define MAX_WAIT_TIME 1500

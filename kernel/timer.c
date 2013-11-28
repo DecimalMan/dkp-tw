@@ -1067,7 +1067,9 @@ static void call_timer_fn(struct timer_list *timer, void (*fn)(unsigned long),
 
 	trace_timer_expire_entry(timer);
 	fn(data);
+#ifdef CONFIG_SEC_DEBUG
 	sec_debug_timer_log(3333, (int)irqs_disabled(), (void*)fn);
+#endif
 	trace_timer_expire_exit(timer);
 
 	lock_map_release(&lockdep_map);
