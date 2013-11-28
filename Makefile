@@ -5,8 +5,8 @@ EXTRAVERSION =
 NAME = Sneaky Weasel
 
 # Build script hints
-DKP_LABEL = dkp for TouchWiz 4.1.x
-DKP_NAME = dkp-tw41
+DKP_LABEL = dkp for TouchWiz 4.3.x
+DKP_NAME = dkp-tw43
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
