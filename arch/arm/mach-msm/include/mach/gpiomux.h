@@ -140,6 +140,8 @@ int msm_gpiomux_write(unsigned gpio, enum msm_gpiomux_setting which,
 	struct gpiomux_setting *setting, struct gpiomux_setting *old_setting);
 #ifdef CONFIG_SEC_PM_DEBUG
 void msm_gpiomux_read(unsigned gpio, struct gpiomux_setting *val);
+#else
+#define msm_gpiomux_read(g, v) do { } while (0)
 #endif
 /* Architecture-internal function for use by the framework only.
  * This function can assume the following:
