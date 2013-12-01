@@ -101,8 +101,8 @@ static void check_temp(struct work_struct *work)
 			} else
 				update_policy = 0;
 #else
-			if (cpu_policy->max < cpu_policy->user_policy.max) {
-				max_freq = cpu_policy->user_policy.max;
+			if (cpu_policy->max < cpu_policy->cpuinfo.max_freq) {
+				max_freq = cpu_policy->cpuinfo.max_freq;
 				update_policy = 1;
 			} else {
 				pr_debug("msm_thermal: policy max for cpu %d "
