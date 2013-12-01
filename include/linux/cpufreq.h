@@ -367,11 +367,6 @@ enum {
 };
 
 enum {
-	BOOT_CPU = 0,
-	NON_BOOT_CPU
-};
-
-enum {
 	TOUCH_BOOSTER_FIRST = 1,
 	TOUCH_BOOSTER_SECOND,
 	TOUCH_BOOSTER,
@@ -420,6 +415,11 @@ int cpufreq_set_limit_defered(unsigned int flag, unsigned int value);
 int cpufreq_get_dvfs_state(void);
 
 #endif
+
+enum {
+	BOOT_CPU = 0,
+	NON_BOOT_CPU
+};
 
 #ifdef CONFIG_INTERACTION_HINTS
 enum {
