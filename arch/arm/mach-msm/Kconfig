@@ -1816,7 +1816,6 @@ endchoice
 config SEC_DVFS_DUAL
 	bool "DVFS DUAL BOOST"
 	default n
-	depends on SEC_DVFS
 
 config MSM_IDLE_WAIT_ON_MODEM
 	int "Wait for Modem to become ready for idle power collapse"
