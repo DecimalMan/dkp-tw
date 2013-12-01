@@ -342,10 +342,7 @@ static void def_work_fn(struct work_struct *work)
 	 * isn't anymore.  We still need non-governor hotplug, so call
 	 * rq_hotplug_enable to migrate to auto-hotplug.
 	 */
-	/* XXX this sucks.  On AOSP, we have hotplug_disabled to notify us that
-	 * mpdecision is suspended.
-	 */
-	if (unlikely(rq_info.def_interval > 5000)) {
+	if (unlikely(rq_info.def_interval > 5000) && !rq_info.hotplug_disabled) {
 		printk(KERN_DEBUG "rq-stats: where's mpdecision? migrating to auto-hotplug\n");
 		rq_hotplug_enable(HP_AUTOHP);
 	}
@@ -396,6 +393,8 @@ int get_dual_boost_state(void)
 
 void dual_boost(unsigned int boost_on)
 {
+	if (!rq_info.init)
+		return;
 	if (boost_on) {
 		if (is_dual_locked != 0)
 			return;
