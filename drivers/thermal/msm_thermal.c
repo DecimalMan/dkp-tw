@@ -31,6 +31,9 @@ static int allowed_max_low = (DEF_ALLOWED_MAX_HIGH - 10);
 static int allowed_max_freq = DEF_ALLOWED_MAX_FREQ;
 static int check_interval_ms = DEF_THERMAL_CHECK_MS;
 
+static DEFINE_SPINLOCK(limits_lock);
+DEFINE_PER_CPU(unsigned int, limits);
+
 module_param(allowed_max_high, int, 0);
 module_param(allowed_max_freq, int, 0);
 module_param(check_interval_ms, int, 0);
@@ -49,7 +52,10 @@ static int update_cpu_max_freq(struct cpufreq_policy *cpu_policy,
 				cpu_policy->min, max_freq);
 	cpu_policy->user_policy.max = max_freq;
 
+	/* Prevent the policy notifier from using these new limits */
+	spin_lock(&limits_lock);
 	ret = cpufreq_update_policy(cpu);
+	spin_unlock(&limits_lock);
 	if (!ret)
 		pr_info("msm_thermal: Limiting core%d max frequency to %d\n",
 			cpu, max_freq);
@@ -69,23 +75,24 @@ static void check_temp(struct work_struct *work)
 
 	tsens_dev.sensor_num = DEF_TEMP_SENSOR;
 	ret = tsens_get_temp(&tsens_dev, &temp);
-	if (ret) {
+	if (unlikely(ret)) {
 		pr_debug("msm_thermal: Unable to read TSENS sensor %d\n",
 				tsens_dev.sensor_num);
 		goto reschedule;
 	}
 
-	for_each_possible_cpu(cpu) {
+	for_each_online_cpu(cpu) {
 		update_policy = 0;
 		cpu_policy = cpufreq_cpu_get(cpu);
 		if (!cpu_policy) {
 			pr_debug("msm_thermal: NULL policy on cpu %d\n", cpu);
 			continue;
 		}
+		spin_lock(&limits_lock);
 		if (temp >= allowed_max_high) {
 			if (cpu_policy->max > allowed_max_freq) {
+				max_freq = per_cpu(limits, cpu);
 				update_policy = 1;
-				max_freq = allowed_max_freq;
 			} else {
 				pr_debug("msm_thermal: policy max for cpu %d "
 					 "already < allowed_max_freq\n", cpu);
@@ -94,15 +101,15 @@ static void check_temp(struct work_struct *work)
 #ifdef CONFIG_SEC_DVFS
 			if (cpufreq_get_dvfs_state() != 1) {
 				if (cpu_policy->max
-					< cpu_policy->cpuinfo.max_freq) {
-					max_freq = cpu_policy->cpuinfo.max_freq;
+					< per_cpu(limits, cpu)) {
+					max_freq = per_cpu(limits, cpu);
 					update_policy = 1;
 				}
 			} else
 				update_policy = 0;
 #else
-			if (cpu_policy->max < cpu_policy->cpuinfo.max_freq) {
-				max_freq = cpu_policy->cpuinfo.max_freq;
+			if (cpu_policy->max < per_cpu(limits, cpu)) {
+				max_freq = per_cpu(limits, cpu);
 				update_policy = 1;
 			} else {
 				pr_debug("msm_thermal: policy max for cpu %d "
@@ -110,6 +117,7 @@ static void check_temp(struct work_struct *work)
 			}
 #endif
 		}
+		spin_unlock(&limits_lock);
 
 		if (update_policy)
 			update_cpu_max_freq(cpu_policy, cpu, max_freq);
@@ -131,10 +139,11 @@ static void disable_msm_thermal(void)
 	for_each_possible_cpu(cpu) {
 		cpu_policy = cpufreq_cpu_get(cpu);
 		if (cpu_policy) {
-			if (cpu_policy->max < cpu_policy->cpuinfo.max_freq)
+			spin_lock(&limits_lock);
+			if (cpu_policy->max < per_cpu(limits, cpu))
 				update_cpu_max_freq(cpu_policy, cpu,
-						    cpu_policy->
-						    cpuinfo.max_freq);
+					per_cpu(limits, cpu));
+			spin_unlock(&limits_lock);
 			cpufreq_cpu_put(cpu_policy);
 		}
 	}
@@ -160,6 +169,18 @@ static struct kernel_param_ops module_ops = {
 	.get = param_get_bool,
 };
 
+struct notifier_block limits_notify;
+
+static int cpufreq_limits_handler(struct notifier_block *nb,
+		unsigned long val, void *data) {
+	if (spin_trylock(&limits_lock)) {
+		struct cpufreq_policy *p = data;
+		per_cpu(limits, p->cpu) = p->user_policy.max;
+		spin_unlock(&limits_lock);
+	}
+	return 0;
+}
+
 module_param_cb(enabled, &module_ops, &enabled, 0644);
 MODULE_PARM_DESC(enabled, "enforce thermal limit on cpu");
 
@@ -169,6 +190,9 @@ static int __init msm_thermal_init(void)
 
 	enabled = 1;
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
+
+	limits_notify.notifier_call = cpufreq_limits_handler;
+	cpufreq_register_notifier(&limits_notify, CPUFREQ_POLICY_NOTIFIER);
 
 	schedule_delayed_work(&check_temp_work, 0);
 
