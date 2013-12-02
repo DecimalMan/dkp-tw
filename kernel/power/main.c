@@ -477,10 +477,35 @@ static ssize_t cpufreq_max_limit_store(struct kobject *kobj,
 power_attr(cpufreq_max_limit);
 power_attr(cpufreq_min_limit);
 #else
-// Dummy attributes
 static int cpufreq_min_limit, cpufreq_max_limit;
-static __GATTR(cpufreq_min_limit, -1, MAX_FREQ_LIMIT, NULL);
-static __GATTR(cpufreq_max_limit, -1, MAX_FREQ_LIMIT, NULL);
+static void dvfs_limit_set(void *p, int v) {
+	char flag = 0;
+	if (p == &cpufreq_max_limit)
+		flag |= QDVFS_MAX;
+#ifdef CONFIG_SEC_DVFS_DUAL
+	else {
+		printk(KERN_DEBUG "%s: boop %i\n", __func__, v);
+		dual_boost(v >= BOOT_FREQ_LIMIT);
+	}
+#endif
+	if (v > 384000)
+		flag |= QDVFS_SET;
+	printk(KERN_DEBUG "%s: queueing %hhu %u\n",
+		__func__, flag, v);
+	cpufreq_queue_dvfs(flag, v);
+}
+static struct gen_attr gattr_cpufreq_min_limit = {
+	.attr = { .name = "cpufreq_min_limit", .mode = 0644 },
+	.min = -1, .max = MAX_FREQ_LIMIT,
+	.cnt = 1, .set = dvfs_limit_set,
+	.ptr = &cpufreq_min_limit,
+};
+static struct gen_attr gattr_cpufreq_max_limit = {
+	.attr = { .name = "cpufreq_max_limit", .mode = 0644 },
+	.min = -1, .max = MAX_FREQ_LIMIT,
+	.cnt = 1, .set = dvfs_limit_set,
+	.ptr = &cpufreq_max_limit,
+};
 #endif
 static ssize_t cpufreq_table_show(struct kobject *kobj,
 			struct kobj_attribute *attr, char *buf)
@@ -542,8 +567,8 @@ static struct attribute * g[] = {
 	&cpufreq_min_limit_attr.attr,
 	&cpufreq_max_limit_attr.attr,
 #else
-	&dkp_attr(cpufreq_min_limit),
-	&dkp_attr(cpufreq_max_limit),
+	&gen_attr(cpufreq_min_limit),
+	&gen_attr(cpufreq_max_limit),
 #endif
 	&cpufreq_table_attr.attr,
 	NULL,
