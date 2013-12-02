@@ -414,6 +414,14 @@ int cpufreq_set_limit(unsigned int flag, unsigned int value);
 int cpufreq_set_limit_defered(unsigned int flag, unsigned int value);
 int cpufreq_get_dvfs_state(void);
 
+#else
+
+#define QDVFS_MAX 0x1 /* 0x0 = MIN */
+#define QDVFS_SET 0x2 /* 0x0 = UNSET */
+#define QDVFS_USER 0x4 /* 0x0 = APPS */
+
+void cpufreq_queue_dvfs(char flag, unsigned int value);
+
 #endif
 
 enum {

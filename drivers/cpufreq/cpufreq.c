@@ -479,6 +479,7 @@ static int check_current_is_thermald(void) {
 static ssize_t show_scaling_max_freq(struct cpufreq_policy *policy, char *buf)
 {
 	int val = 0;
+
 	if (check_current_is_thermald() &&
 		policy->max == policy->user_policy.max) {
 			val = 1512000;
@@ -527,11 +528,8 @@ static ssize_t store_scaling_min_freq
 {
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
-#ifndef CONFIG_SEC_DVFS
-	struct cpufreq_policy new_policy;
-#endif
 
-	if (dont_touch_my_shit) {
+	if (unlikely(dont_touch_my_shit)) {
 		struct task_struct *t;
 		printk(KERN_DEBUG "%s: setting %s, trace:\n", __func__, buf);
 		for (t = current; t->real_parent && t->pid; t = t->real_parent)
@@ -552,16 +550,8 @@ static ssize_t store_scaling_min_freq
 
 	return count;
 #else
-	ret = cpufreq_get_policy(&new_policy, policy->cpu);
-	if (ret)
-		return -EINVAL;
-
-	new_policy.min = value;
-
-	ret = __cpufreq_set_policy(policy, &new_policy);
-	policy->user_policy.min = policy->min;
-
-	return ret ? ret : count;
+	printk(KERN_DEBUG "%s: queuing %u\n", __func__, value);
+	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_SET, value);
 #endif
 }
 
@@ -584,7 +574,6 @@ static void do_enable_oc(struct work_struct *work) {
 		goto out;
 	}
 	policy->cpuinfo.max_freq = new_policy.max = new_max;
-	printk(KERN_DEBUG "%s: set policy for cpu %i\n", __func__, policy->cpu);
 	if (ret = __cpufreq_set_policy(policy, &new_policy)) {
 		printk(KERN_ERR "%s: can't set policy (%i)!\n", __func__, ret);
 		goto out;
@@ -600,11 +589,8 @@ static ssize_t store_scaling_max_freq
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
 	bool is_thermald = 0;
-#ifndef CONFIG_SEC_DVFS
-	struct cpufreq_policy new_policy;
-#endif
 
-	if (dont_touch_my_shit) {
+	if (unlikely(dont_touch_my_shit)) {
 		struct task_struct *t;
 		printk(KERN_DEBUG "%s: setting %s, trace:\n", __func__, buf);
 		for (t = current; t->real_parent && t->pid; t = t->real_parent)
@@ -644,17 +630,8 @@ static ssize_t store_scaling_max_freq
 
 	return count;
 #else
-	ret = cpufreq_get_policy(&new_policy, policy->cpu);
-	if (ret)
-		return -EINVAL;
-
-	new_policy.max = value;
-
-	ret = __cpufreq_set_policy(policy, &new_policy);
-	if (!is_thermald)
-		policy->user_policy.max = policy->max;
-
-	return ret ? ret : count;
+	printk(KERN_DEBUG "%s: queuing %u\n", __func__, value);
+	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_MAX | QDVFS_SET, value);
 #endif
 }
 
@@ -1476,8 +1453,8 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 #ifdef CONFIG_HOTPLUG_CPU
 	strncpy(per_cpu(cpufreq_policy_save, cpu).gov, data->governor->name,
 			CPUFREQ_NAME_LEN);
-	per_cpu(cpufreq_policy_save, cpu).min = data->min;
-	per_cpu(cpufreq_policy_save, cpu).max = data->max;
+	per_cpu(cpufreq_policy_save, cpu).min = data->user_policy.min;
+	per_cpu(cpufreq_policy_save, cpu).max = data->user_policy.max;
 	pr_debug("Saving CPU%d policy min %d and max %d\n",
 			cpu, data->min, data->max);
 #endif
@@ -1505,8 +1482,8 @@ static int __cpufreq_remove_dev(struct sys_device *sys_dev)
 #ifdef CONFIG_HOTPLUG_CPU
 			strncpy(per_cpu(cpufreq_policy_save, j).gov,
 				data->governor->name, CPUFREQ_NAME_LEN);
-			per_cpu(cpufreq_policy_save, j).min = data->min;
-			per_cpu(cpufreq_policy_save, j).max = data->max;
+			per_cpu(cpufreq_policy_save, j).min = data->user_policy.min;
+			per_cpu(cpufreq_policy_save, j).max = data->user_policy.max;
 			pr_debug("Saving CPU%d policy min %d and max %d\n",
 					j, data->min, data->max);
 #endif
@@ -2423,6 +2400,82 @@ int cpufreq_set_limit_defered(unsigned int flag, unsigned value)
 		ret = -EBUSY;
 
 	return ret;
+}
+#else
+// serializing allows us to make a few assumptions
+static DEFINE_MUTEX(qdvfs_lock);
+struct qdvfs_work {
+	struct work_struct work;
+	unsigned int value;
+	char flag;
+};
+void do_queued_dvfs(struct work_struct *work) {
+	struct qdvfs_work *q = work;
+	int i;
+	mutex_lock(&qdvfs_lock);
+	printk(KERN_DEBUG "%s: %s %s %s (%u)\n", __func__,
+		q->flag & QDVFS_SET ? "set" : "release",
+		q->flag & QDVFS_USER ? "user" : "apps",
+		q->flag & QDVFS_MAX ? "max" : "min",
+		q->value);
+	for_each_online_cpu(i) {
+		struct cpufreq_policy new;
+		struct cpufreq_policy *pol;
+		unsigned int *active;
+		unsigned int *user;
+
+		pol = cpufreq_cpu_get(i);
+		if (unlikely(!pol))
+			continue;
+		memcpy(&new, pol, sizeof(struct cpufreq_policy));
+
+		// ...eww.
+		active = q->flag & QDVFS_MAX ?
+			&new.max : &new.min;
+		user = q->flag & QDVFS_MAX ?
+			&new.user_policy.max : &new.user_policy.min;
+		if (q->flag & QDVFS_SET) {
+			if (q->flag & QDVFS_USER) {
+				if (*user == *active == q->value)
+					goto out;
+			} else {
+				if (q->flag & QDVFS_MAX) {
+					if (q->value > *user)
+						q->value = *user;
+				} else {
+					if (q->value < *user)
+						q->value = *user;
+				}
+				if (*active == q->value)
+					goto out;
+			}
+			*active = q->value;
+		} else {
+			if (active == *user)
+				goto out;
+			*active = *user;
+		}
+		__cpufreq_set_policy(pol, &new);
+		if (q->flag & QDVFS_USER) {
+			user = q->flag & QDVFS_MAX ?
+				&pol->user_policy.max : &pol->user_policy.min;
+			*user = q->value;
+		}
+out:
+		cpufreq_cpu_put(pol);
+	}
+	mutex_unlock(&qdvfs_lock);
+	kfree(q);
+}
+
+void cpufreq_queue_dvfs(char flag, unsigned int value) {
+	struct qdvfs_work *q = kmalloc(sizeof(struct qdvfs_work), GFP_KERNEL);
+	if (!q)
+		return;
+	INIT_WORK(&q->work, do_queued_dvfs);
+	q->value = value;
+	q->flag = flag;
+	schedule_work(&q->work);
 }
 #endif
 
