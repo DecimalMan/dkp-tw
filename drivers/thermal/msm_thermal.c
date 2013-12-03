@@ -45,6 +45,9 @@ static int update_cpu_max_freq(struct cpufreq_policy *cpu_policy,
 {
 	int ret = 0;
 
+	if (!max_freq)
+		return -EINVAL;
+
 	if (!cpu_policy)
 		return -EINVAL;
 
@@ -139,11 +142,9 @@ static void disable_msm_thermal(void)
 	for_each_possible_cpu(cpu) {
 		cpu_policy = cpufreq_cpu_get(cpu);
 		if (cpu_policy) {
-			spin_lock(&limits_lock);
 			if (cpu_policy->max < per_cpu(limits, cpu))
 				update_cpu_max_freq(cpu_policy, cpu,
 					per_cpu(limits, cpu));
-			spin_unlock(&limits_lock);
 			cpufreq_cpu_put(cpu_policy);
 		}
 	}
@@ -173,9 +174,22 @@ struct notifier_block limits_notify;
 
 static int cpufreq_limits_handler(struct notifier_block *nb,
 		unsigned long val, void *data) {
-	if (spin_trylock(&limits_lock)) {
+	/* user_policy generally isn't updated until after the notifier blocks
+	 * get called, so .max != .user_policy.max here.  In the event that
+	 * thermal throttling begins while SEC_DVFS has reduced the maximum
+	 * frequency, the old user_policy value (the actual maximum) is lost.
+	 *
+	 * There's not a good way around this, but fortunately SEC_DVFS is
+	 * never used to adjust the max.
+	 */
+	if (val == CPUFREQ_NOTIFY && spin_trylock(&limits_lock)) {
 		struct cpufreq_policy *p = data;
-		per_cpu(limits, p->cpu) = p->user_policy.max;
+		if (p->max <= MAX_FREQ_LIMIT &&
+			p->max >= MIN_FREQ_LIMIT) {
+			printk(KERN_DEBUG "msm_thermal: got new max %u\n",
+				__func__, p->max);
+			per_cpu(limits, p->cpu) = p->max;
+		}
 		spin_unlock(&limits_lock);
 	}
 	return 0;
