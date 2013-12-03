@@ -550,7 +550,6 @@ static ssize_t store_scaling_min_freq
 
 	return count;
 #else
-	printk(KERN_DEBUG "%s: queuing %u\n", __func__, value);
 	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_SET, value);
 #endif
 }
@@ -630,7 +629,6 @@ static ssize_t store_scaling_max_freq
 
 	return count;
 #else
-	printk(KERN_DEBUG "%s: queuing %u\n", __func__, value);
 	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_MAX | QDVFS_SET, value);
 #endif
 }
@@ -1002,9 +1000,6 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
 			// If cpu0 can't enable cpu1, we need mpdecision
 			if (cpu == 0)
 				msm_rq_stats_enable(!(t->flags & BIT(GOVFLAGS_HOTPLUG)));
-		} else if (fattr->store == store_scaling_max_freq ||
-			   fattr->store == store_scaling_min_freq) {
-			iter = 1;
 		}
 	}
 
@@ -2427,6 +2422,8 @@ void do_queued_dvfs(struct work_struct *work) {
 		pol = cpufreq_cpu_get(i);
 		if (unlikely(!pol))
 			continue;
+		if (lock_policy_rwsem_write(i) < 0)
+			continue;
 		memcpy(&new, pol, sizeof(struct cpufreq_policy));
 
 		// ...eww.
@@ -2462,6 +2459,7 @@ void do_queued_dvfs(struct work_struct *work) {
 			*user = q->value;
 		}
 out:
+		unlock_policy_rwsem_write(i);
 		cpufreq_cpu_put(pol);
 	}
 	mutex_unlock(&qdvfs_lock);
