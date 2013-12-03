@@ -33,6 +33,7 @@
 
 //#define DEBUG
 //#define SYSFS
+//#define BOGUS
 
 /******************************************************************************
  * Debug Definitions
@@ -103,6 +104,7 @@ static struct msm_rpmrs_resource msm_rpmrs_pxo = {
 	.rs[0].id = MSM_RPMRS_ID_PXO_CLK,
 	.size = 1,
 	.name = "pxo",
+	.enable_low_power = 1,
 	.beyond_limits = LIMITS(msm_rpmrs_pxo_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_pxo,
 	.restore = msm_rpmrs_restore_pxo,
@@ -113,6 +115,7 @@ static struct msm_rpmrs_resource msm_rpmrs_l2_cache = {
 	.rs[0].id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL,
 	.size = 1,
 	.name = "L2_cache",
+	.enable_low_power = 1,
 	.beyond_limits = LIMITS(msm_rpmrs_l2_cache_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_l2_cache,
 	.restore = msm_rpmrs_restore_l2_cache,
@@ -124,6 +127,7 @@ static struct msm_rpmrs_resource msm_rpmrs_vdd_mem = {
 	.rs[1].id = MSM_RPMRS_ID_VDD_MEM_1,
 	.size = 2,
 	.name = "vdd_mem",
+	.enable_low_power = 1,
 	.beyond_limits = LIMITS(msm_rpmrs_vdd_mem_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_vdd_mem,
 	.restore = msm_rpmrs_restore_vdd_mem,
@@ -135,6 +139,7 @@ static struct msm_rpmrs_resource msm_rpmrs_vdd_dig = {
 	.rs[1].id = MSM_RPMRS_ID_VDD_DIG_1,
 	.size = 2,
 	.name = "vdd_dig",
+	.enable_low_power = 1,
 	.beyond_limits = LIMITS(msm_rpmrs_vdd_dig_beyond_limits),
 	.aggregate = msm_rpmrs_aggregate_vdd_dig,
 	.restore = msm_rpmrs_restore_vdd_dig,
