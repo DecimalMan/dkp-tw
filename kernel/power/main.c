@@ -480,28 +480,29 @@ power_attr(cpufreq_min_limit);
 static int cpufreq_min_limit, cpufreq_max_limit;
 static void dvfs_limit_set(void *p, int v) {
 	char flag = 0;
+	*((int *)p) = v;
 	if (p == &cpufreq_max_limit)
 		flag |= QDVFS_MAX;
 #ifdef CONFIG_SEC_DVFS_DUAL
-	else {
-		printk(KERN_DEBUG "%s: boop %i\n", __func__, v);
+	else
 		dual_boost(v >= BOOT_FREQ_LIMIT);
-	}
 #endif
 	if (v > 384000)
 		flag |= QDVFS_SET;
-	printk(KERN_DEBUG "%s: queueing %hhu %u\n",
-		__func__, flag, v);
 	cpufreq_queue_dvfs(flag, v);
 }
 static struct gen_attr gattr_cpufreq_min_limit = {
 	.attr = { .name = "cpufreq_min_limit", .mode = 0644 },
+	.store = gattr_generic_store,
+	.show = gattr_generic_show,
 	.min = -1, .max = MAX_FREQ_LIMIT,
 	.cnt = 1, .set = dvfs_limit_set,
 	.ptr = &cpufreq_min_limit,
 };
 static struct gen_attr gattr_cpufreq_max_limit = {
 	.attr = { .name = "cpufreq_max_limit", .mode = 0644 },
+	.store = gattr_generic_store,
+	.show = gattr_generic_show,
 	.min = -1, .max = MAX_FREQ_LIMIT,
 	.cnt = 1, .set = dvfs_limit_set,
 	.ptr = &cpufreq_max_limit,
