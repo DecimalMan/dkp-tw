@@ -271,5 +271,5 @@ int _MLPrintVaLog(int priority, const char *tag, const char *fmt, va_list args);
 int _MLWriteLog(const char *buf, int buflen);
 
 #define LOG_RESULT_LOCATION(condition) \
-	MPL_LOGE("%s@%d: returning %d\n", __func__, __LINE__);
+	MPL_LOGE("%s@%d: returning %d\n", __func__, __LINE__, (int)(condition));
 #endif				/* _LIBS_CUTILS_MPL_LOG_H */
