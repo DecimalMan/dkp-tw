@@ -2401,14 +2401,14 @@ int cpufreq_set_limit_defered(unsigned int flag, unsigned value)
 static DEFINE_MUTEX(qdvfs_lock);
 struct qdvfs_work {
 	struct work_struct work;
-	unsigned int value;
+	int value;
 	char flag;
 };
 void do_queued_dvfs(struct work_struct *work) {
 	struct qdvfs_work *q = work;
 	int i;
 	mutex_lock(&qdvfs_lock);
-	printk(KERN_DEBUG "%s: %s %s %s (%u)\n", __func__,
+	printk(KERN_DEBUG "%s: %s %s %s (%i)\n", __func__,
 		q->flag & QDVFS_SET ? "set" : "release",
 		q->flag & QDVFS_USER ? "user" : "apps",
 		q->flag & QDVFS_MAX ? "max" : "min",
@@ -2466,7 +2466,7 @@ out:
 	kfree(q);
 }
 
-void cpufreq_queue_dvfs(char flag, unsigned int value) {
+void cpufreq_queue_dvfs(char flag, int value) {
 	struct qdvfs_work *q = kmalloc(sizeof(struct qdvfs_work), GFP_KERNEL);
 	if (!q)
 		return;

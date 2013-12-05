@@ -420,7 +420,7 @@ int cpufreq_get_dvfs_state(void);
 #define QDVFS_SET 0x2 /* 0x0 = UNSET */
 #define QDVFS_USER 0x4 /* 0x0 = APPS */
 
-void cpufreq_queue_dvfs(char flag, unsigned int value);
+void cpufreq_queue_dvfs(char flag, int value);
 
 #endif
 
