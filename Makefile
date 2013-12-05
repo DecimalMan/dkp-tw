@@ -583,7 +583,7 @@ ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 # Optimize for size
 KBUILD_CFLAGS   += -Os
 # Generic ARM flags
-KBUILD_CFLAGS   += -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp
+KBUILD_CFLAGS   += -mtune=cortex-a15
 # Loop optimizations
 KBUILD_CFLAGS   += -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
 		   -ftree-loop-im -fivopts
@@ -591,43 +591,35 @@ KBUILD_CFLAGS   += -fgraphite-identity -ftree-loop-distribution -floop-block -ft
 KBUILD_CFLAGS   += -fmodulo-sched -fmodulo-sched-allow-regmoves
 # GCC extras
 KBUILD_CFLAGS   += -fgcse-sm -fgcse-las -fsched-spec-load -fsched-pressure \
-		   -fsched-stalled-insns=0 -fsched-stalled-insns-dep=0
+		   -fsched-stalled-insns=0
 # GCC params
-KBUILD_CFLAGS   += --param max-gcse-memory=1073741824 \
-		   --param max-gcse-insertion-ratio=50 \
-		   --param max-tail-merge-comparisons=100 \
-		   --param max-tail-merge-iterations=4 \
-		   --param max-gcse-insertion-ratio=50 \
-		   --param max-tail-merge-comparisons=100 \
-		   --param max-tail-merge-iterations=4 \
-		   --param l1-cache-size=40 \
-		   --param l2-cache-size=1024 \
-		   --param max-vartrack-size=0
-else
-# Optimize for getting stuff done
-KBUILD_CFLAGS   += -O3
-# Generic ARM flags
-KBUILD_CFLAGS   += -marm -mtune=cortex-a15 -mfpu=neon -mfloat-abi=softfp \
-		   -mvectorize-with-neon-quad
-# Loop optimizations
-KBUILD_CFLAGS   += -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
-		   -ftree-loop-im -fivopts -funswitch-loops -funroll-loops -floop-strip-mine
-# Modulo scheduling
-KBUILD_CFLAGS   += -fmodulo-sched -fmodulo-sched-allow-regmoves
-# GCC extras
-KBUILD_CFLAGS   += -fgcse-sm -fgcse-las -fsched-spec-load -fsched-pressure \
-		   -fsched-stalled-insns=0 -fsched-stalled-insns-dep=0 -fipa-matrix-reorg
-# GCC params
-KBUILD_CFLAGS   += --param max-gcse-memory=1073741824 \
-		   --param max-gcse-insertion-ratio=50 \
-		   --param max-tail-merge-comparisons=100 \
-		   --param max-tail-merge-iterations=4 \
+KBUILD_CFLAGS   += --param max-gcse-memory=0 \
 		   --param max-gcse-insertion-ratio=50 \
 		   --param max-tail-merge-comparisons=100 \
 		   --param max-tail-merge-iterations=4 \
 		   --param l1-cache-size=16 \
-		   --param l2-cache-size=512 \
-		   --param max-vartrack-size=0
+		   --param l2-cache-size=512
+else
+# Optimize for getting stuff done
+KBUILD_CFLAGS   += -O3
+# Generic ARM flags
+KBUILD_CFLAGS   += -mtune=cortex-a15
+# Loop optimizations
+KBUILD_CFLAGS   += -fgraphite-identity -ftree-loop-distribution -floop-block -ftree-loop-linear \
+		   -ftree-loop-im -fivopts -funswitch-loops -funroll-loops -floop-strip-mine \
+		   -ftree-loop-ivcanon
+# Modulo scheduling
+KBUILD_CFLAGS   += -fmodulo-sched -fmodulo-sched-allow-regmoves
+# GCC extras
+KBUILD_CFLAGS   += -fgcse-sm -fgcse-las -fsched-spec-load -fsched-pressure \
+		   -fsched-stalled-insns=0 -fipa-matrix-reorg
+# GCC params
+KBUILD_CFLAGS   += --param max-gcse-memory=0 \
+		   --param max-gcse-insertion-ratio=50 \
+		   --param max-tail-merge-comparisons=100 \
+		   --param max-tail-merge-iterations=4 \
+		   --param l1-cache-size=16 \
+		   --param l2-cache-size=512
 endif
 # ipa-pta only makes sense with LTO
 ifdef CONFIG_LTO
