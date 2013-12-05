@@ -139,10 +139,7 @@ struct qup_i2c_dev {
 	struct device                *dev;
 	void __iomem                 *base;		/* virtual */
 	void __iomem                 *gsbi;		/* virtual */
-	int                          in_irq;
-	int                          out_irq;
 	int                          err_irq;
-	int                          num_irqs;
 	struct clk                   *clk;
 	struct clk                   *pclk;
 	struct i2c_adapter           adapter;
@@ -193,72 +190,51 @@ qup_i2c_interrupt(int irq, void *devid)
 	uint32_t status = readl_relaxed(dev->base + QUP_I2C_STATUS);
 	uint32_t status1 = readl_relaxed(dev->base + QUP_ERROR_FLAGS);
 	uint32_t op_flgs = readl_relaxed(dev->base + QUP_OPERATIONAL);
-	int err = 0;
 
 	if (unlikely(!dev->msg || !dev->complete)) {
 		/* Clear Error interrupt if it's a level triggered interrupt*/
-		if (dev->num_irqs == 1) {
-			writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
-			/* Ensure that state is written before ISR exits */
-			mb();
-		}
+		writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
+		/* Ensure that state is written before ISR exits */
+		wmb();
 		return IRQ_HANDLED;
 	}
 
 	if (unlikely(status & I2C_STATUS_ERROR_MASK)) {
 		dev_err(dev->dev, "QUP: I2C status flags :0x%x, irq:%d\n",
 			status, irq);
-		err = status;
+		dev->err = status;
 		/* Clear Error interrupt if it's a level triggered interrupt*/
-		if (dev->num_irqs == 1) {
-			writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
-			/* Ensure that state is written before ISR exits */
-			mb();
-		}
+		writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
 		goto intr_done;
 	}
 
 	if (unlikely(status1 & 0x7F)) {
 		dev_err(dev->dev, "QUP: QUP status flags :0x%x\n", status1);
-		err = -status1;
+		dev->err = -status1;
 		/* Clear Error interrupt if it's a level triggered interrupt*/
-		if (dev->num_irqs == 1) {
-			writel_relaxed((status1 & QUP_STATUS_ERROR_FLAGS),
-				dev->base + QUP_ERROR_FLAGS);
-			/* Ensure that error flags are cleared before ISR
-			 * exits
-			 */
-			mb();
-		}
+		writel_relaxed((status1 & QUP_STATUS_ERROR_FLAGS),
+			dev->base + QUP_ERROR_FLAGS);
 		goto intr_done;
 	}
 
-	if ((dev->num_irqs == 3) && (dev->msg->flags == I2C_M_RD)
-		&& (irq == dev->out_irq))
-		return IRQ_HANDLED;
 	if (op_flgs & QUP_OUT_SVC_FLAG) {
 		writel_relaxed(QUP_OUT_SVC_FLAG, dev->base + QUP_OPERATIONAL);
-		/* Ensure that service flag is acknowledged before ISR exits */
-		mb();
 	}
 	if (dev->msg->flags == I2C_M_RD) {
 		if ((op_flgs & QUP_MX_INPUT_DONE) ||
 			(op_flgs & QUP_IN_SVC_FLAG)) {
 			writel_relaxed(QUP_IN_SVC_FLAG, dev->base
 					+ QUP_OPERATIONAL);
-			/* Ensure that service flag is acknowledged before ISR
-			 * exits
-			 */
-			mb();
 		} else
 			return IRQ_HANDLED;
 	}
 
 intr_done:
+	/* Ensure that any state changes are acknowledged before ISR exits */
+	wmb();
 	dev_dbg(dev->dev, "QUP intr= %d, i2c status=0x%x, qup status = 0x%x\n",
 			irq, status, status1);
 	qup_print_status(dev);
-	dev->err = err;
 	complete(dev->complete);
 	return IRQ_HANDLED;
 }
@@ -732,7 +708,6 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	struct qup_i2c_dev *dev = i2c_get_adapdata(adap);
 	int ret;
 	int rem = num;
-	long timeout;
 	int err;
 
 	del_timer_sync(&dev->pwr_timer);
@@ -805,10 +780,6 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		goto out_err;
 	}
 
-	if (dev->num_irqs == 3) {
-		enable_irq(dev->in_irq);
-		enable_irq(dev->out_irq);
-	}
 	enable_irq(dev->err_irq);
 
 	/* Initialize QUP registers */
@@ -923,9 +894,8 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				idx, rem, num, dev->mode);
 
 			qup_print_status(dev);
-			timeout = wait_for_completion_timeout(&complete,
-					msecs_to_jiffies(dev->out_fifo_sz));
-			if (unlikely(!timeout)) {
+			if (unlikely(!wait_for_completion_timeout(&complete,
+					msecs_to_jiffies(dev->out_fifo_sz)))) {
 				uint32_t istatus = readl_relaxed(dev->base +
 							QUP_I2C_STATUS);
 				uint32_t qstatus = readl_relaxed(dev->base +
@@ -940,10 +910,8 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				 */
 				if (!(istatus & I2C_STATUS_BUS_ACTIVE) ||
 					(istatus & I2C_STATUS_BUS_MASTER)) {
-					timeout =
-					wait_for_completion_timeout(&complete,
-									HZ);
-					if (timeout)
+					if (wait_for_completion_timeout(
+							&complete, HZ))
 						goto timeout_err;
 				}
 				qup_i2c_recover_bus_busy(dev);
@@ -998,7 +966,7 @@ timeout_err:
 					if (i % 2 == 0) {
 						if ((rd_status &
 							QUP_IN_NOT_EMPTY) == 0)
-							goto retry_msg;
+							break;
 						dval = readl_relaxed(dev->base +
 							QUP_IN_FIFO_BASE);
 						dev->msg->buf[dev->pos] =
@@ -1014,26 +982,23 @@ timeout_err:
 			dev_dbg(dev->dev, "pos:%d, len:%d, cnt:%d\n",
 					dev->pos, msgs->len, dev->cnt);
 		} while (dev->cnt > 0);
-		if (dev->cnt == 0) {
-			if (msgs->len == dev->pos) {
-				rem--;
-				msgs++;
-				dev->pos = 0;
+		if (msgs->len == dev->pos) {
+			rem--;
+			msgs++;
+			dev->pos = 0;
+		}
+		if (rem) {
+			err = qup_i2c_poll_clock_ready(dev);
+			if (err < 0) {
+				ret = err;
+				goto out_err;
 			}
-			if (rem) {
-				err = qup_i2c_poll_clock_ready(dev);
-				if (err < 0) {
-					ret = err;
-					goto out_err;
-				}
-				err = qup_update_state(dev, QUP_RESET_STATE);
-				if (err < 0) {
-					ret = err;
-					goto out_err;
-				}
+			err = qup_update_state(dev, QUP_RESET_STATE);
+			if (err < 0) {
+				ret = err;
+				goto out_err;
 			}
 		}
-retry_msg:
 		/* Wait for I2C bus to be idle */
 		ret = qup_i2c_poll_writeready(dev, rem);
 		if (ret) {
@@ -1046,10 +1011,6 @@ retry_msg:
 	ret = num;
  out_err:
 	disable_irq(dev->err_irq);
-	if (dev->num_irqs == 3) {
-		disable_irq(dev->in_irq);
-		disable_irq(dev->out_irq);
-	}
 	dev->complete = NULL;
 	dev->msg = NULL;
 	dev->pos = 0;
@@ -1075,7 +1036,7 @@ qup_i2c_probe(struct platform_device *pdev)
 {
 	struct qup_i2c_dev	*dev;
 	struct resource         *qup_mem, *gsbi_mem, *qup_io, *gsbi_io, *res;
-	struct resource		*in_irq, *out_irq, *err_irq;
+	struct resource		*err_irq;
 	struct clk         *clk, *pclk;
 	int ret = 0;
 	int i;
@@ -1095,16 +1056,6 @@ qup_i2c_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "no qup mem resource?\n");
 		return -ENODEV;
 	}
-
-	/*
-	 * We only have 1 interrupt for new hardware targets and in_irq,
-	 * out_irq will be NULL for those platforms
-	 */
-	in_irq = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
-						"qup_in_intr");
-
-	out_irq = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
-						"qup_out_intr");
 
 	err_irq = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
 						"qup_err_intr");
@@ -1169,15 +1120,7 @@ qup_i2c_probe(struct platform_device *pdev)
 	}
 
 	dev->dev = &pdev->dev;
-	if (in_irq)
-		dev->in_irq = in_irq->start;
-	if (out_irq)
-		dev->out_irq = out_irq->start;
 	dev->err_irq = err_irq->start;
-	if (in_irq && out_irq)
-		dev->num_irqs = 3;
-	else
-		dev->num_irqs = 1;
 	dev->clk = clk;
 	dev->pclk = pclk;
 	dev->base = ioremap(qup_mem->start, resource_size(qup_mem));
@@ -1218,46 +1161,16 @@ qup_i2c_probe(struct platform_device *pdev)
 	 * and handle the changes in ISR accordingly
 	 * Per Hardware guidelines, if we have 3 interrupts, they are always
 	 * edge triggering, and if we have 1, it's always level-triggering
+	 *
+	 * XXX on 8960, num_irqs == 1.
 	 */
-	if (dev->num_irqs == 3) {
-		ret = request_irq(dev->in_irq, qup_i2c_interrupt,
-				IRQF_TRIGGER_RISING, "qup_in_intr", dev);
-		if (ret) {
-			dev_err(&pdev->dev, "request_in_irq failed\n");
-			goto err_request_irq_failed;
-		}
-		/*
-		 * We assume out_irq exists if in_irq does since platform
-		 * configuration either has 3 interrupts assigned to QUP or 1
-		 */
-		ret = request_irq(dev->out_irq, qup_i2c_interrupt,
-				IRQF_TRIGGER_RISING, "qup_out_intr", dev);
-		if (ret) {
-			dev_err(&pdev->dev, "request_out_irq failed\n");
-			free_irq(dev->in_irq, dev);
-			goto err_request_irq_failed;
-		}
-		ret = request_irq(dev->err_irq, qup_i2c_interrupt,
-				IRQF_TRIGGER_RISING, "qup_err_intr", dev);
-		if (ret) {
-			dev_err(&pdev->dev, "request_err_irq failed\n");
-			free_irq(dev->out_irq, dev);
-			free_irq(dev->in_irq, dev);
-			goto err_request_irq_failed;
-		}
-	} else {
-		ret = request_irq(dev->err_irq, qup_i2c_interrupt,
-				IRQF_TRIGGER_HIGH, "qup_err_intr", dev);
-		if (ret) {
-			dev_err(&pdev->dev, "request_err_irq failed\n");
-			goto err_request_irq_failed;
-		}
+	ret = request_irq(dev->err_irq, qup_i2c_interrupt,
+			IRQF_TRIGGER_HIGH, "qup_err_intr", dev);
+	if (ret) {
+		dev_err(&pdev->dev, "request_err_irq failed\n");
+		goto err_request_irq_failed;
 	}
 	disable_irq(dev->err_irq);
-	if (dev->num_irqs == 3) {
-		disable_irq(dev->in_irq);
-		disable_irq(dev->out_irq);
-	}
 	i2c_set_adapdata(&dev->adapter, dev);
 	dev->adapter.algo = &qup_i2c_algo;
 	strlcpy(dev->adapter.name,
@@ -1278,10 +1191,6 @@ qup_i2c_probe(struct platform_device *pdev)
 	ret = i2c_add_numbered_adapter(&dev->adapter);
 	if (ret) {
 		dev_err(&pdev->dev, "i2c_add_adapter failed\n");
-		if (dev->num_irqs == 3) {
-			free_irq(dev->out_irq, dev);
-			free_irq(dev->in_irq, dev);
-		}
 		free_irq(dev->err_irq, dev);
 	} else
 		return 0;
@@ -1323,10 +1232,6 @@ qup_i2c_remove(struct platform_device *pdev)
 	if (dev->clk_state != 0)
 		qup_i2c_pwr_mgmt(dev, 0);
 	platform_set_drvdata(pdev, NULL);
-	if (dev->num_irqs == 3) {
-		free_irq(dev->out_irq, dev);
-		free_irq(dev->in_irq, dev);
-	}
 	free_irq(dev->err_irq, dev);
 	i2c_del_adapter(&dev->adapter);
 	clk_put(dev->clk);
