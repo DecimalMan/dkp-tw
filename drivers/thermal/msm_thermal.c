@@ -32,7 +32,7 @@ static int allowed_max_freq = DEF_ALLOWED_MAX_FREQ;
 static int check_interval_ms = DEF_THERMAL_CHECK_MS;
 
 static DEFINE_SPINLOCK(limits_lock);
-DEFINE_PER_CPU(unsigned int, limits);
+static DEFINE_PER_CPU(unsigned int, limits);
 
 module_param(allowed_max_high, int, 0);
 module_param(allowed_max_freq, int, 0);
@@ -180,19 +180,23 @@ static int cpufreq_limits_handler(struct notifier_block *nb,
 	 * frequency, the old user_policy value (the actual maximum) is lost.
 	 *
 	 * There's not a good way around this, but fortunately SEC_DVFS is
-	 * never used to adjust the max.
+	 * never(?) used to adjust the max.
 	 */
-	if (val == CPUFREQ_NOTIFY && spin_trylock(&limits_lock)) {
-		struct cpufreq_policy *p = data;
-		if (p->max <= MAX_FREQ_LIMIT &&
-			p->max >= MIN_FREQ_LIMIT) {
-			printk(KERN_DEBUG "msm_thermal: got new max %u\n",
-				__func__, p->max);
-			per_cpu(limits, p->cpu) = p->max;
-		}
+	struct cpufreq_policy *p = data;
+	unsigned int max = p->max;
+	unsigned int cpu = p->cpu;
+
+	if (val != CPUFREQ_NOTIFY)
+		goto out;
+	if (unlikely(max > MAX_FREQ_LIMIT))
+		goto out;
+	if (spin_trylock(&limits_lock)) {
+		per_cpu(limits, cpu) = max;
 		spin_unlock(&limits_lock);
 	}
-	return 0;
+
+out:
+	return NOTIFY_DONE;
 }
 
 module_param_cb(enabled, &module_ops, &enabled, 0644);
