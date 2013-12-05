@@ -634,9 +634,6 @@ static void qup_i2c_recover_bus_busy(struct qup_i2c_dev *dev)
 	uint32_t status = readl_relaxed(dev->base + QUP_I2C_STATUS);
 	struct gpiomux_setting old_gpio_setting;
 
-	if (dev->pdata->msm_i2c_config_gpio)
-		return;
-
 	if (!(status & (I2C_STATUS_BUS_ACTIVE)) ||
 		(status & (I2C_STATUS_BUS_MASTER)))
 		return;
@@ -708,7 +705,6 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	struct qup_i2c_dev *dev = i2c_get_adapdata(adap);
 	int ret;
 	int rem = num;
-	int err;
 
 	del_timer_sync(&dev->pwr_timer);
 	mutex_lock(&dev->mlock);
@@ -823,9 +819,8 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				filled = true;
 		}
 
-		err = qup_update_state(dev, QUP_RUN_STATE);
-		if (unlikely(err < 0)) {
-			ret = err;
+		ret = qup_update_state(dev, QUP_RUN_STATE);
+		if (unlikely(ret < 0)) {
 			goto out_err;
 		}
 
@@ -842,9 +837,8 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 			uint32_t carry_over = 0;
 
 			/* Transition to PAUSE state only possible from RUN */
-			err = qup_update_state(dev, QUP_PAUSE_STATE);
-			if (unlikely(err < 0)) {
-				ret = err;
+			ret = qup_update_state(dev, QUP_PAUSE_STATE);
+			if (unlikely(ret < 0)) {
 				goto out_err;
 			}
 
@@ -885,9 +879,8 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 						filled = true;
 				}
 			}
-			err = qup_update_state(dev, QUP_RUN_STATE);
-			if (unlikely(err < 0)) {
-				ret = err;
+			ret = qup_update_state(dev, QUP_RUN_STATE);
+			if (unlikely(ret < 0)) {
 				goto out_err;
 			}
 			dev_dbg(dev->dev, "idx:%d, rem:%d, num:%d, mode:%d\n",
@@ -988,20 +981,18 @@ timeout_err:
 			dev->pos = 0;
 		}
 		if (rem) {
-			err = qup_i2c_poll_clock_ready(dev);
-			if (err < 0) {
-				ret = err;
+			ret = qup_i2c_poll_clock_ready(dev);
+			if (unlikely(ret < 0)) {
 				goto out_err;
 			}
-			err = qup_update_state(dev, QUP_RESET_STATE);
-			if (err < 0) {
-				ret = err;
+			ret = qup_update_state(dev, QUP_RESET_STATE);
+			if (unlikely(ret < 0)) {
 				goto out_err;
 			}
 		}
 		/* Wait for I2C bus to be idle */
 		ret = qup_i2c_poll_writeready(dev, rem);
-		if (ret) {
+		if (unlikely(ret)) {
 			dev_err(dev->dev,
 				"Error waiting for write ready\n");
 			goto out_err;
@@ -1177,8 +1168,6 @@ qup_i2c_probe(struct platform_device *pdev)
 		"QUP I2C adapter",
 		sizeof(dev->adapter.name));
 	dev->adapter.nr = pdev->id;
-	if (pdata->msm_i2c_config_gpio)
-		pdata->msm_i2c_config_gpio(dev->adapter.nr, 1);
 
 	dev->suspended = 0;
 	mutex_init(&dev->mlock);
