@@ -26,6 +26,7 @@
 
 #include <linux/types.h>
 #include <linux/elf-em.h>
+#include <linux/err.h>
 
 /* The netlink messages for the audit system is divided into blocks:
  * 1000 - 1099 are for commanding the audit system
@@ -450,6 +451,9 @@ static inline void audit_syscall_entry(int arch, int major, unsigned long a0,
 	if (unlikely(!audit_dummy_context()))
 		__audit_syscall_entry(arch, major, a0, a1, a2, a3);
 }
+#ifndef is_syscall_success
+#define is_syscall_success(regs) (!IS_ERR_VALUE((unsigned long)(regs_return_value(regs))))
+#endif
 static inline void audit_syscall_exit(void *pt_regs)
 {
 	if (unlikely(current->audit_context)) {
