@@ -34,7 +34,7 @@
 #include "msm_fb.h"
 #include "mdp4.h"
 #include "mipi_dsi.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 #include <mach/iommu_domains.h>
 
 #define DSI_VIDEO_BASE	0xE0000

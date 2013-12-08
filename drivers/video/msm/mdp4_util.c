@@ -32,7 +32,7 @@
 #include "mdp.h"
 #include "msm_fb.h"
 #include "mdp4.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 
 #ifdef BLT_MODE_CHANGE_ISSUE
 int middle_of_blt_change = 0;

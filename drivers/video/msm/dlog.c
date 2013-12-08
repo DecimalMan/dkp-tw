@@ -64,7 +64,7 @@
 #endif
 
 #define __DLOG_IMPLEMENTAION_MODULE__
-#include <dlog.h>
+#include <linux/dlog.h>
 u32 __debug_mdp_phys = 0x0000;
 
 

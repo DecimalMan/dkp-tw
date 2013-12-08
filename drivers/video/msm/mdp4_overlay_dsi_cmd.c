@@ -30,7 +30,7 @@
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mdp4.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 
 static int vsync_start_y_adjust = 4;
 

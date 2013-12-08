@@ -42,7 +42,7 @@
 #include "mdp.h"
 #include "msm_fb.h"
 #include "mdp4.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 #define VERSION_KEY_MASK	0xFFFFFF00
 
 struct mdp4_overlay_ctrl {

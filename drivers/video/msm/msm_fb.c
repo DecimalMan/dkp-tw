@@ -55,7 +55,7 @@
 #include "tvenc.h"
 #include "mdp.h"
 #include "mdp4.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 #ifdef CONFIG_FB_MSM_LOGO
 #define INIT_IMAGE_FILE "/initlogo.rle"
 extern int load_565rle_image(char *filename, bool bf_supported);

@@ -38,7 +38,7 @@
 #include "mipi_samsung_esd_refresh.h"
 #endif
 
-#include "dlog.h"
+#include <linux/dlog.h>
 
 u32 dsi_irq;
 u32 esc_byte_ratio;

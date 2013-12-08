@@ -42,7 +42,7 @@
 #include "mdp4.h"
 #endif
 #include "mipi_dsi.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 
 uint32 mdp4_extn_disp;
 

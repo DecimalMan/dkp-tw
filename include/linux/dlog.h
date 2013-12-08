@@ -988,7 +988,6 @@ struct dclock {
 #define CLK_TEST_APCS_SYSQSB_CLK ( CLK_APCS_TEST|0x03)
 #define CLK_TEST_APCS_SYSREF_CLK ( CLK_APCS_TEST|0x06)
 
-
 #define CLK_MMSS_TEST (0x4<<0xC)
 #define CLK_TEST_SEL_MASK (0x0000F000)
 
@@ -996,4 +995,3 @@ struct dclock {
 #define CLK_TEST_SUB_MUX_MASK (0xF0000000)
 
 #endif
-	

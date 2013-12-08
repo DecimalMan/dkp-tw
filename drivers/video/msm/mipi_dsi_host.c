@@ -39,7 +39,7 @@
 #include "mipi_dsi.h"
 #include "mdp.h"
 #include "mdp4.h"
-#include "dlog.h"
+#include <linux/dlog.h>
 
 static struct completion dsi_dma_comp;
 static struct completion dsi_mdp_comp;
