@@ -28,7 +28,7 @@
 #include "a2220_firmware_jasper.h"
 #elif defined(_d2tmo_) || defined(_d2ltetmo_) || defined(_d2lteMetroPCS_)
 #include "a2220_firmware_t999.h"
-#elif defined(_d2spr_) || defined(_d2vmu_)
+#elif defined(CONFIG_MACH_M2_SPR)
 #include "a2220_firmware_l710.h"
 #else
 #include "a2220_firmware_i747.h"
