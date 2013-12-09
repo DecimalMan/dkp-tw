@@ -101,7 +101,6 @@ module_param_named(secdebug,
 
 static struct msm_pm_platform_data *msm_pm_modes;
 static int rpm_cpu0_wakeup_irq;
-static int spc_attempts;
 
 void __init msm_pm_set_platform_data(
 	struct msm_pm_platform_data *data, int count)
@@ -115,6 +114,9 @@ void __init msm_pm_set_rpm_wakeup_irq(unsigned int irq)
 	rpm_cpu0_wakeup_irq = irq;
 }
 
+#ifdef SYSFS
+static int spc_attempts;
+
 enum {
 	MSM_PM_MODE_ATTR_SUSPEND,
 	MSM_PM_MODE_ATTR_IDLE,
@@ -126,7 +128,6 @@ static char *msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_NR] = {
 	[MSM_PM_MODE_ATTR_IDLE] = "idle_enabled",
 };
 
-#ifdef SYSFS
 struct msm_pm_kobj_attribute {
 	unsigned int cpu;
 	struct kobj_attribute ka;
@@ -656,7 +657,9 @@ EXPORT_SYMBOL(msm_pm_set_max_sleep_time);
  *****************************************************************************/
 
 static struct msm_rpmrs_limits *msm_pm_idle_rs_limits;
+#ifdef CONFIG_SEC_DEBUG
 static int debug_power_collaspe_status[2] = {0};
+#endif
 
 static void msm_pm_swfi(void)
 {
@@ -1232,8 +1235,8 @@ static int __init msm_pm_init(void)
 	pgd_t *pc_pgd;
 	pmd_t *pmd;
 	unsigned long pmdval;
-	unsigned int cpu;
 #ifdef CONFIG_MSM_IDLE_STATS
+	unsigned int cpu;
 	struct proc_dir_entry *d_entry;
 #endif
 	int ret;

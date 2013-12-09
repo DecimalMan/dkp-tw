@@ -3822,8 +3822,6 @@ static struct msm_iommu_ctx msm_iommu_split_ctx_names[] = {
 	},
 };
 
-static int iommu_enabled;
-
 void mdp4_iommu_attach(void)
 {
 	static int done;

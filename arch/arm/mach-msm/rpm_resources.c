@@ -56,20 +56,21 @@ module_param_named(
 static struct msm_rpmrs_level *msm_rpmrs_levels;
 static int msm_rpmrs_level_count;
 
-static bool msm_rpmrs_pxo_beyond_limits(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_aggregate_pxo(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_pxo(void);
-static bool msm_rpmrs_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_aggregate_l2_cache(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_l2_cache(void);
-static bool msm_rpmrs_vdd_mem_beyond_limits(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_aggregate_vdd_mem(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_vdd_mem(void);
-static bool msm_rpmrs_vdd_dig_beyond_limits(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_aggregate_vdd_dig(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_vdd_dig(void);
 
 #ifdef SYSFS
+static bool msm_rpmrs_pxo_beyond_limits(struct msm_rpmrs_limits *limits);
+static bool msm_rpmrs_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits);
+static bool msm_rpmrs_vdd_mem_beyond_limits(struct msm_rpmrs_limits *limits);
+static bool msm_rpmrs_vdd_dig_beyond_limits(struct msm_rpmrs_limits *limits);
+static bool msm_spm_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits);
 static ssize_t msm_rpmrs_resource_attr_show(
 	struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t msm_rpmrs_resource_attr_store(struct kobject *kobj,
@@ -220,19 +221,6 @@ static void msm_rpmrs_restore_sclk(void)
 	msm_rpmrs_buffer[MSM_RPM_ID_TRIGGER_TIMED_TO] = 0;
 }
 
-static bool msm_rpmrs_pxo_beyond_limits(struct msm_rpmrs_limits *limits)
-{
-	struct msm_rpmrs_resource *rs = &msm_rpmrs_pxo;
-	uint32_t pxo;
-
-	if (rs->enable_low_power && test_bit(rs->rs[0].id, msm_rpmrs_buffered))
-		pxo = msm_rpmrs_buffer[rs->rs[0].id];
-	else
-		pxo = MSM_RPMRS_PXO_ON;
-
-	return pxo > limits->pxo;
-}
-
 static void msm_rpmrs_aggregate_pxo(struct msm_rpmrs_limits *limits)
 {
 	struct msm_rpmrs_resource *rs = &msm_rpmrs_pxo;
@@ -255,19 +243,6 @@ static void msm_rpmrs_restore_pxo(void)
 		msm_rpmrs_buffer[rs->rs[0].id] = rs->rs[0].value;
 }
 
-static bool msm_rpmrs_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits)
-{
-	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
-	uint32_t l2_cache;
-
-	if (rs->enable_low_power && test_bit(rs->rs[0].id, msm_rpmrs_buffered))
-		l2_cache = msm_rpmrs_buffer[rs->rs[0].id];
-	else
-		l2_cache = MSM_RPMRS_L2_CACHE_ACTIVE;
-
-	return l2_cache > limits->l2_cache;
-}
-
 static void msm_rpmrs_aggregate_l2_cache(struct msm_rpmrs_limits *limits)
 {
 	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
@@ -283,48 +258,12 @@ static void msm_rpmrs_aggregate_l2_cache(struct msm_rpmrs_limits *limits)
 	}
 }
 
-static bool msm_spm_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits)
-{
-	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
-	uint32_t l2_cache = rs->rs[0].value;
-
-	if (!rs->enable_low_power)
-		l2_cache = MSM_RPMRS_L2_CACHE_ACTIVE;
-
-	return l2_cache > limits->l2_cache;
-}
-
 static void msm_rpmrs_restore_l2_cache(void)
 {
 	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
 
 	if (test_bit(rs->rs[0].id, msm_rpmrs_buffered))
 		msm_rpmrs_buffer[rs->rs[0].id] = rs->rs[0].value;
-}
-
-static bool msm_rpmrs_vdd_mem_beyond_limits(struct msm_rpmrs_limits *limits)
-{
-	struct msm_rpmrs_resource *rs = &msm_rpmrs_vdd_mem;
-	uint32_t vdd_mem;
-
-	if (test_bit(rs->rs[0].id, msm_rpmrs_buffered)) {
-		uint32_t buffered_value = msm_rpmrs_buffer[rs->rs[0].id];
-
-		if (rs->enable_low_power == 0)
-			vdd_mem = MSM_RPMRS_VDD_MEM_ACTIVE;
-		else if (rs->enable_low_power == 1)
-			vdd_mem = MSM_RPMRS_VDD_MEM_RET_HIGH;
-		else
-			vdd_mem = MSM_RPMRS_VDD_MEM_RET_LOW;
-
-		if (MSM_RPMRS_VDD(buffered_value) > MSM_RPMRS_VDD(vdd_mem))
-			vdd_mem = buffered_value;
-	} else {
-		vdd_mem = MSM_RPMRS_VDD_MEM_ACTIVE;
-	}
-
-	return MSM_RPMRS_VDD(vdd_mem) >
-				MSM_RPMRS_VDD(limits->vdd_mem_upper_bound);
 }
 
 static void msm_rpmrs_aggregate_vdd_mem(struct msm_rpmrs_limits *limits)
@@ -351,31 +290,6 @@ static void msm_rpmrs_restore_vdd_mem(void)
 
 	if (test_bit(rs->rs[0].id, msm_rpmrs_buffered))
 		msm_rpmrs_buffer[rs->rs[0].id] = rs->rs[0].value;
-}
-
-static bool msm_rpmrs_vdd_dig_beyond_limits(struct msm_rpmrs_limits *limits)
-{
-	struct msm_rpmrs_resource *rs = &msm_rpmrs_vdd_dig;
-	uint32_t vdd_dig;
-
-	if (test_bit(rs->rs[0].id, msm_rpmrs_buffered)) {
-		uint32_t buffered_value = msm_rpmrs_buffer[rs->rs[0].id];
-
-		if (rs->enable_low_power == 0)
-			vdd_dig = MSM_RPMRS_VDD_DIG_ACTIVE;
-		else if (rs->enable_low_power == 1)
-			vdd_dig = MSM_RPMRS_VDD_DIG_RET_HIGH;
-		else
-			vdd_dig = MSM_RPMRS_VDD_DIG_RET_LOW;
-
-		if (MSM_RPMRS_VDD(buffered_value) > MSM_RPMRS_VDD(vdd_dig))
-			vdd_dig = buffered_value;
-	} else {
-		vdd_dig = MSM_RPMRS_VDD_DIG_ACTIVE;
-	}
-
-	return MSM_RPMRS_VDD(vdd_dig) >
-				MSM_RPMRS_VDD(limits->vdd_dig_upper_bound);
 }
 
 static void msm_rpmrs_aggregate_vdd_dig(struct msm_rpmrs_limits *limits)
@@ -405,6 +319,95 @@ static void msm_rpmrs_restore_vdd_dig(void)
 		msm_rpmrs_buffer[rs->rs[0].id] = rs->rs[0].value;
 }
 
+#ifdef SYSFS
+static bool msm_rpmrs_pxo_beyond_limits(struct msm_rpmrs_limits *limits)
+{
+	struct msm_rpmrs_resource *rs = &msm_rpmrs_pxo;
+	uint32_t pxo;
+
+	if (rs->enable_low_power && test_bit(rs->rs[0].id, msm_rpmrs_buffered))
+		pxo = msm_rpmrs_buffer[rs->rs[0].id];
+	else
+		pxo = MSM_RPMRS_PXO_ON;
+
+	return pxo > limits->pxo;
+}
+
+static bool msm_rpmrs_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits)
+{
+	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
+	uint32_t l2_cache;
+
+	if (rs->enable_low_power && test_bit(rs->rs[0].id, msm_rpmrs_buffered))
+		l2_cache = msm_rpmrs_buffer[rs->rs[0].id];
+	else
+		l2_cache = MSM_RPMRS_L2_CACHE_ACTIVE;
+
+	return l2_cache > limits->l2_cache;
+}
+
+static bool msm_spm_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits)
+{
+	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
+	uint32_t l2_cache = rs->rs[0].value;
+
+	if (!rs->enable_low_power)
+		l2_cache = MSM_RPMRS_L2_CACHE_ACTIVE;
+
+	return l2_cache > limits->l2_cache;
+}
+
+static bool msm_rpmrs_vdd_mem_beyond_limits(struct msm_rpmrs_limits *limits)
+{
+	struct msm_rpmrs_resource *rs = &msm_rpmrs_vdd_mem;
+	uint32_t vdd_mem;
+
+	if (test_bit(rs->rs[0].id, msm_rpmrs_buffered)) {
+		uint32_t buffered_value = msm_rpmrs_buffer[rs->rs[0].id];
+
+		if (rs->enable_low_power == 0)
+			vdd_mem = MSM_RPMRS_VDD_MEM_ACTIVE;
+		else if (rs->enable_low_power == 1)
+			vdd_mem = MSM_RPMRS_VDD_MEM_RET_HIGH;
+		else
+			vdd_mem = MSM_RPMRS_VDD_MEM_RET_LOW;
+
+		if (MSM_RPMRS_VDD(buffered_value) > MSM_RPMRS_VDD(vdd_mem))
+			vdd_mem = buffered_value;
+	} else {
+		vdd_mem = MSM_RPMRS_VDD_MEM_ACTIVE;
+	}
+
+	return MSM_RPMRS_VDD(vdd_mem) >
+				MSM_RPMRS_VDD(limits->vdd_mem_upper_bound);
+}
+
+static bool msm_rpmrs_vdd_dig_beyond_limits(struct msm_rpmrs_limits *limits)
+{
+	struct msm_rpmrs_resource *rs = &msm_rpmrs_vdd_dig;
+	uint32_t vdd_dig;
+
+	if (test_bit(rs->rs[0].id, msm_rpmrs_buffered)) {
+		uint32_t buffered_value = msm_rpmrs_buffer[rs->rs[0].id];
+
+		if (rs->enable_low_power == 0)
+			vdd_dig = MSM_RPMRS_VDD_DIG_ACTIVE;
+		else if (rs->enable_low_power == 1)
+			vdd_dig = MSM_RPMRS_VDD_DIG_RET_HIGH;
+		else
+			vdd_dig = MSM_RPMRS_VDD_DIG_RET_LOW;
+
+		if (MSM_RPMRS_VDD(buffered_value) > MSM_RPMRS_VDD(vdd_dig))
+			vdd_dig = buffered_value;
+	} else {
+		vdd_dig = MSM_RPMRS_VDD_DIG_ACTIVE;
+	}
+
+	return MSM_RPMRS_VDD(vdd_dig) >
+				MSM_RPMRS_VDD(limits->vdd_dig_upper_bound);
+}
+#endif
+
 /******************************************************************************
  * Buffering Functions
  *****************************************************************************/
@@ -430,7 +433,10 @@ static bool msm_rpmrs_use_mpm(struct msm_rpmrs_limits *limits)
 
 static void msm_rpmrs_update_levels(void)
 {
-	int i, k;
+	int i;
+#ifdef SYSFS
+	int k;
+#endif
 
 	for (i = 0; i < msm_rpmrs_level_count; i++) {
 		struct msm_rpmrs_level *level = &msm_rpmrs_levels[i];

@@ -148,7 +148,7 @@ static DEFINE_MUTEX(qsee_sfpb_bw_mutex);
 static DEFINE_MUTEX(app_access_lock);
 
 static int qsee_bw_count;
-static int qsee_sfpb_bw_count;
+//static int qsee_sfpb_bw_count;
 static struct clk *qseecom_bus_clk;
 static uint32_t qsee_perf_client;
 

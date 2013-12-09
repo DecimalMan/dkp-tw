@@ -30,10 +30,6 @@
 
 #define TIMEOUT_MS 1000
 
-static struct apr_svc *apr_handle_q;
-static struct apr_svc *apr_handle_m;
-static struct apr_svc *core_handle_q;
-
 static int32_t query_adsp_ver;
 static wait_queue_head_t adsp_version_wait;
 static uint32_t adsp_version;
@@ -41,8 +37,45 @@ static uint32_t adsp_version;
 static wait_queue_head_t bus_bw_req_wait;
 static u32 bus_bw_resp_received;
 
+#ifdef CONFIG_DEBUG_FS
+static struct apr_svc *core_handle_q;
+static struct apr_svc *apr_handle_q;
+static struct apr_svc *apr_handle_m;
+
 static struct dentry *dentry;
 static char l_buf[4096];
+
+uint32_t core_get_adsp_version(void)
+{
+	struct apr_hdr *hdr;
+	int32_t rc = 0, ret = 0;
+	core_open();
+	if (core_handle_q) {
+		hdr = (struct apr_hdr *)l_buf;
+		hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
+					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		hdr->pkt_size = APR_PKT_SIZE(APR_HDR_SIZE, 0);
+		hdr->src_port = 0;
+		hdr->dest_port = 0;
+		hdr->token = 0;
+		hdr->opcode = ADSP_GET_VERSION;
+
+		apr_send_pkt(core_handle_q, (uint32_t *)l_buf);
+		query_adsp_ver = 1;
+		pr_info("Write_q\n");
+		ret = wait_event_timeout(adsp_version_wait,
+					(query_adsp_ver == 0),
+					msecs_to_jiffies(TIMEOUT_MS));
+		rc = adsp_version;
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+			rc = -ENODEV;
+		}
+	} else
+		pr_info("apr registration failed\n");
+	return rc;
+}
+EXPORT_SYMBOL(core_get_adsp_version);
 
 static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 {
@@ -150,18 +183,6 @@ static ssize_t apr_debug_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-void core_open(void)
-{
-	if (core_handle_q == NULL) {
-		core_handle_q = apr_register("ADSP", "CORE",
-					aprv2_core_fn_q, 0xFFFFFFFF, NULL);
-	}
-	pr_info("Open_q %p\n", core_handle_q);
-	if (core_handle_q == NULL) {
-		pr_err("%s: Unable to register CORE\n", __func__);
-	}
-}
-
 int core_req_bus_bandwith(u16 bus_id, u32 ab_bps, u32 ib_bps)
 {
 	struct adsp_cmd_remote_bus_bw_request bus_bw_req;
@@ -211,37 +232,17 @@ fail_cmd:
 	return ret;
 }
 
-uint32_t core_get_adsp_version(void)
+void core_open(void)
 {
-	struct apr_hdr *hdr;
-	int32_t rc = 0, ret = 0;
-	core_open();
-	if (core_handle_q) {
-		hdr = (struct apr_hdr *)l_buf;
-		hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
-					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-		hdr->pkt_size = APR_PKT_SIZE(APR_HDR_SIZE, 0);
-		hdr->src_port = 0;
-		hdr->dest_port = 0;
-		hdr->token = 0;
-		hdr->opcode = ADSP_GET_VERSION;
-
-		apr_send_pkt(core_handle_q, (uint32_t *)l_buf);
-		query_adsp_ver = 1;
-		pr_info("Write_q\n");
-		ret = wait_event_timeout(adsp_version_wait,
-					(query_adsp_ver == 0),
-					msecs_to_jiffies(TIMEOUT_MS));
-		rc = adsp_version;
-		if (!ret) {
-			pr_err("%s: wait_event timeout\n", __func__);
-			rc = -ENODEV;
-		}
-	} else
-		pr_info("apr registration failed\n");
-	return rc;
+	if (core_handle_q == NULL) {
+		core_handle_q = apr_register("ADSP", "CORE",
+					aprv2_core_fn_q, 0xFFFFFFFF, NULL);
+	}
+	pr_info("Open_q %p\n", core_handle_q);
+	if (core_handle_q == NULL) {
+		pr_err("%s: Unable to register CORE\n", __func__);
+	}
 }
-EXPORT_SYMBOL(core_get_adsp_version);
 
 static ssize_t apr_debug_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *ppos)
@@ -384,6 +385,7 @@ static const struct file_operations apr_debug_fops = {
 	.write = apr_debug_write,
 	.open = apr_debug_open,
 };
+#endif
 
 static int __init core_init(void)
 {
@@ -394,9 +396,9 @@ static int __init core_init(void)
 	init_waitqueue_head(&adsp_version_wait);
 	adsp_version = 0;
 
+#ifdef CONFIG_DEBUG_FS
 	core_handle_q = NULL;
 
-#ifdef CONFIG_DEBUG_FS
 	dentry = debugfs_create_file("apr", S_IFREG | S_IRUGO | S_IWUSR
 		| S_IWGRP, NULL, (void *) NULL, &apr_debug_fops);
 #endif /* CONFIG_DEBUG_FS */

@@ -18,7 +18,7 @@
 #define MAYBE(f) f
 #else
 // This causes compiler warnings, but whatever.
-#define MAYBE(f) ;
+#define MAYBE(f)
 #endif
 
 #include <linux/clk.h>
@@ -785,9 +785,9 @@ static void _qce_ahash_complete(void *cookie, unsigned char *digest,
 	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(areq->base.tfm);
 	struct qcrypto_sha_req_ctx *rctx = ahash_request_ctx(areq);
 	struct crypto_priv *cp = sha_ctx->cp;
-	MAYBE(struct crypto_stat *pstat;)
 	uint32_t diglen = crypto_ahash_digestsize(ahash);
 	uint32_t *auth32 = (uint32_t *)authdata;
+	MAYBE(struct crypto_stat *pstat;)
 
 	MAYBE(pstat = &_qcrypto_stat[cp->pdev->id];)
 
@@ -918,10 +918,12 @@ static void _qce_aead_complete(void *cookie, unsigned char *icv,
 			memcpy(ctx->iv, iv, crypto_aead_ivsize(aead));
 	}
 
+#ifdef DEBUG
 	if (ret)
-		MAYBE(pstat->aead_op_fail++;)
+		pstat->aead_op_fail++;
 	else
-		MAYBE(pstat->aead_op_success++;)
+		pstat->aead_op_success++;
+#endif
 
 	if (cp->platform_support.ce_shared)
 		schedule_work(&cp->unlock_ce_ws);
@@ -1173,13 +1175,15 @@ done:
 		cp->req = NULL;
 		spin_unlock_irqrestore(&cp->lock, flags);
 
+#ifdef DEBUG
 		if (type == CRYPTO_ALG_TYPE_ABLKCIPHER)
-			MAYBE(pstat->ablk_cipher_op_fail++;)
+			pstat->ablk_cipher_op_fail++;
 		else
 			if (type == CRYPTO_ALG_TYPE_AHASH)
-				MAYBE(pstat->sha_op_fail++;)
+				pstat->sha_op_fail++;
 			else
-				MAYBE(pstat->aead_op_fail++;)
+				pstat->aead_op_fail++;
+#endif
 
 		async_req->complete(async_req, ret);
 		goto again;
@@ -2418,8 +2422,8 @@ static int _sha1_hmac_init(struct ahash_request *req)
 {
 	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(req->base.tfm);
 	struct crypto_priv *cp = sha_ctx->cp;
-	MAYBE(struct crypto_stat *pstat;)
 	int ret = 0;
+	MAYBE(struct crypto_stat *pstat;)
 
 	MAYBE(pstat = &_qcrypto_stat[cp->pdev->id];)
 	MAYBE(pstat->sha1_hmac_digest++;)
@@ -2445,8 +2449,8 @@ static int _sha256_hmac_init(struct ahash_request *req)
 {
 	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(req->base.tfm);
 	struct crypto_priv *cp = sha_ctx->cp;
-	MAYBE(struct crypto_stat *pstat;)
 	int ret = 0;
+	MAYBE(struct crypto_stat *pstat;)
 
 	MAYBE(pstat = &_qcrypto_stat[cp->pdev->id];)
 	MAYBE(pstat->sha256_hmac_digest++;)
@@ -3354,9 +3358,9 @@ err:
 
 static int __init _qcrypto_init(void)
 {
+#ifdef DEBUG
 	int rc;
 
-#ifdef DEBUG
 	rc = _qcrypto_debug_init();
 	if (rc)
 		return rc;

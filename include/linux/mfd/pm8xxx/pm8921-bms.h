@@ -18,6 +18,7 @@
 
 #define PM8921_BMS_DEV_NAME	"pm8921-bms"
 
+/*
 #define FCC_CC_COLS		5
 #define FCC_TEMP_COLS		8
 
@@ -28,6 +29,7 @@
 #define PC_TEMP_COLS		8
 
 #define MAX_SINGLE_LUT_COLS	20
+*/
 
 /**
  * struct pc_sf_lut -

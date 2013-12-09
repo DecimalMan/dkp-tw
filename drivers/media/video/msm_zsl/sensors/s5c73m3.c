@@ -119,7 +119,7 @@ static int s5c73m3_set_af_mode(int val);
 static int s5c73m3_open_firmware_file(const char *filename,
 	u8 *buf, u16 offset, u16 size);
 
-extern void power_on_flash();
+extern void power_on_flash(void);
 
 static DECLARE_WAIT_QUEUE_HEAD(s5c73m3_wait_queue);
 

@@ -1878,7 +1878,7 @@ static bool cam_is_vdd_core_set(void)
 	return isVddCoreSet;
 }
 
-void power_on_flash()
+void power_on_flash(void)
 {
 	int temp = 0;
 	int ret = 0;

@@ -1383,7 +1383,7 @@ static int  samsung_allocate_framebuffer(struct fb_info *info){
 	int ret = 0;
 	int reqsize = (fbvar->xres * fbvar->yres * (fbvar->bits_per_pixel / 8) *2);
 
-	printk("!!!!%s requesting memory %d", __func__, reqsize);
+	printk(KERN_DEBUG "!!!!%s requesting memory %d", __func__, reqsize);
 	ihdl = ion_alloc(iclient, reqsize, SZ_1M, mfd->mem_hid);
 	if (IS_ERR_OR_NULL(ihdl)) {
 		pr_err("unable to alloc fbmem from ion (%p)\n", ihdl);
@@ -1396,9 +1396,9 @@ static int  samsung_allocate_framebuffer(struct fb_info *info){
 	info->fix.smem_start = phys;
 	info->fix.smem_len = bootlogo_size;
 
-	printk("!!!!%s info->screen_base = %x", __func__, info->screen_base);
-	printk("!!!!%s info->fix.smem_start = %x", __func__, info->fix.smem_start);
-	printk("!!!!%s info->fix.len = %x", __func__, info->fix.smem_len);
+	printk(KERN_DEBUG "!!!!%s info->screen_base = %p", __func__, info->screen_base);
+	printk(KERN_DEBUG "!!!!%s info->fix.smem_start = %lx", __func__, info->fix.smem_start);
+	printk(KERN_DEBUG "!!!!%s info->fix.len = %x", __func__, info->fix.smem_len);
 
 	msm_iommu_map_contig_buffer(phys, DISPLAY_WRITE_DOMAIN, 0, bootlogo_size, SZ_4K, 0,
 						&mfd->display_iova);
@@ -1413,7 +1413,8 @@ static int samsung_deallocate_framebuffer(struct fb_info *info){
 		pr_info("Boot logo releasing fb0\n");
 		memset(info->screen_base,0x0,info->fix.smem_len);
 		// free up the previously allocated memory
-		msm_iommu_unmap_contig_buffer(&mfd->display_iova,DISPLAY_WRITE_DOMAIN,0,bootlogo_size);
+		msm_iommu_unmap_contig_buffer((unsigned long)&mfd->display_iova,
+			DISPLAY_WRITE_DOMAIN,0,bootlogo_size);
 
 		if (!IS_ERR_OR_NULL(ihdl)) {
 			ion_unmap_kernel(iclient,ihdl);
@@ -2000,7 +2001,7 @@ static int msm_fb_open(struct fb_info *info, int user)
 
 	if ((kernel_logo_displayed == KERNELLOGO_STAT_DISPLAYED)
 			&& (mfd->ref_cnt >= 1)) {
-		printk ("!!!! %s: dellocating init logo buffer\n", __func__);
+		printk (KERN_DEBUG "!!!! %s: dellocating init logo buffer\n", __func__);
 		samsung_deallocate_framebuffer(info);
 		kernel_logo_displayed = KERNELLOGO_STAT_COMPLETED;
 	}
@@ -3510,7 +3511,7 @@ static int msmfb_overlay_play_wait(struct fb_info *info, unsigned long *argp)
 	return ret;
 }
 
-static int msmfb_overlay_commit(struct fb_info *info)
+static inline int msmfb_overlay_commit(struct fb_info *info)
 {
 	return mdp4_overlay_commit(info);
 }
@@ -3692,11 +3693,11 @@ static int msmfb_overlay_ioctl_writeback_set_mirr_hint(struct fb_info *
 		goto error;
 
 	ret = mdp4_writeback_set_mirroring_hint(info, hint);
-	if (ret)
-		goto error;
 error:
 	if (ret)
 		pr_err("%s: ioctl failed\n", __func__);
+
+	return ret;
 }
 
 #else

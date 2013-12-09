@@ -12,7 +12,6 @@
  */
 
 //#define pr_fmt(fmt) "%s: " fmt, __func__
-#define pr_fmt(fmt)
 
 #include <linux/module.h>
 #include <linux/err.h>
@@ -68,6 +67,7 @@ struct vreg_config *(*get_config[])(void) = {
 #define RPM_VREG_PIN_CTRL_EN3		0x08
 #define RPM_VREG_PIN_CTRL_ALL		0x0F
 
+#if 0
 static const char *label_freq[] = {
 	[RPM_VREG_FREQ_NONE]		= " N/A",
 	[RPM_VREG_FREQ_19p20]		= "19.2",
@@ -87,6 +87,7 @@ static const char *label_freq[] = {
 	[RPM_VREG_FREQ_1p28]		= "1.28",
 	[RPM_VREG_FREQ_1p20]		= "1.20",
 };
+#endif
 /*
  * This is used when voting for LPM or HPM by subtracting or adding to the
  * hpm_min_load of a regulator.  It has units of uA.
