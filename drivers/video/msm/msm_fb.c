@@ -4388,6 +4388,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 
 		ret = msmfb_handle_pp_ioctl(mfd, &mdp_pp);
 		break;
+
 	case MSMFB_BUFFER_SYNC:
 		ret = copy_from_user(&buf_sync, argp, sizeof(buf_sync));
 		if (ret)
@@ -4404,6 +4405,8 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		if (ret)
 			goto msm_fb_ioctl_exit;
 		ret = msmfb_handle_metadata_ioctl(mfd, &mdp_metadata);
+		break;
+
 	case MSMFB_DISPLAY_COMMIT:
 		ret = msmfb_display_commit(info, argp);
 		break;
@@ -4416,6 +4419,9 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 msm_fb_ioctl_exit:
 	mutex_unlock(&mfd->entry_mutex);
 exit:
+	if (unlikely(ret))
+		printk(KERN_DEBUG "%s: returning %i on ioctl %u\n",
+			__func__, ret, cmd);
 	return ret;
 }
 
