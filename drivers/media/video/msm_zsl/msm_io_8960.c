@@ -46,11 +46,13 @@ static struct clk *camio_cam_clk;
 static struct clk *camio_jpeg_clk;
 static struct clk *camio_jpeg_pclk;
 static struct regulator *fs_ijpeg;
+#if !defined(CONFIG_S5C73M3) && !defined(CONFIG_S5K6A3YX)
 static struct regulator *cam_vana;
 static struct regulator *cam_vio;
 static struct regulator *cam_vdig;
 static struct regulator *cam_vaf;
 static struct regulator *mipi_csi_vdd;
+#endif
 
 static struct msm_camera_io_clk camio_clk;
 static struct platform_device *camio_dev;
@@ -63,7 +65,7 @@ void msm_io_setBits(void __iomem *addr, int offset, int bitmask)
 {
 	uint32_t value = 0;
 	value = msm_io_r(addr + offset);
-	CDBG("%s: Writing %x at (%x + %x), New value = %x\n",
+	CDBG("%s: Writing %x at (%p + %x), New value = %x\n",
 	       __func__, bitmask, addr, offset, value | bitmask);
 	msm_io_w(value | bitmask , addr + offset);
 }
@@ -171,6 +173,7 @@ void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len)
 	msm_io_dump(dest_addr, len);
 }
 
+#if !defined(CONFIG_S5C73M3) && !defined(CONFIG_S5K6A3YX)
 static int msm_camera_vreg_enable(struct platform_device *pdev)
 {
 	if (mipi_csi_vdd == NULL) {
@@ -402,6 +405,7 @@ static void msm_camera_vreg_disable(void)
 		cam_vaf = NULL;
 	}
 }
+#endif
 
 int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 {
@@ -627,18 +631,6 @@ void msm_camio_3d_disable(void)
 	release_mem_region(s3drw_mem->start, resource_size(s3drw_mem));
 }
 
-static struct pm8xxx_mpp_config_data privacy_light_on_config = {
-	.type		= PM8XXX_MPP_TYPE_SINK,
-	.level		= PM8XXX_MPP_CS_OUT_5MA,
-	.control	= PM8XXX_MPP_CS_CTRL_MPP_LOW_EN,
-};
-
-static struct pm8xxx_mpp_config_data privacy_light_off_config = {
-	.type		= PM8XXX_MPP_TYPE_SINK,
-	.level		= PM8XXX_MPP_CS_OUT_5MA,
-	.control	= PM8XXX_MPP_CS_CTRL_DISABLE,
-};
-
 int msm_camio_sensor_clk_on(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -677,13 +669,6 @@ int msm_camio_sensor_clk_on(struct platform_device *pdev)
 #else
 	msm_camera_vreg_enable(pdev);
 #endif
-	if (sinfo->sensor_platform_info->privacy_light) {
-		struct msm8960_privacy_light_cfg *privacy_light_config =
-			sinfo->sensor_platform_info->privacy_light_info;
-		/* UPDATE1031_CAM_TEMP */
-		/*pm8xxx_mpp_config(privacy_light_config->mpp,
-						  &privacy_light_on_config);*/
-	}
 	msleep(20);
 	return 0;
 }
@@ -704,13 +689,6 @@ int msm_camio_sensor_clk_off(struct platform_device *pdev)
 #else
 	msm_camera_vreg_disable();
 #endif
-	if (sinfo->sensor_platform_info->privacy_light) {
-		struct msm8960_privacy_light_cfg *privacy_light_config =
-			sinfo->sensor_platform_info->privacy_light_info;
-		/* UPDATE1031_CAM_TEMP */
-		/*pm8xxx_mpp_config(privacy_light_config->mpp,
-						  &privacy_light_off_config);*/
-	}
 	rc = config_gpio_table(0);
 	if (rc < 0)
 		return rc;

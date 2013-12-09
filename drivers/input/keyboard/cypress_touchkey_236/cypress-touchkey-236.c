@@ -869,7 +869,6 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 	struct input_dev *input_dev;
 	int ret = 0;
 	int i;
-	int retry = NUM_OF_RETRY_UPDATE;
 	int ic_fw_ver;
 
 	struct device *sec_touchkey;
@@ -982,6 +981,7 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 	dev_err(&client->dev, "Touchkey FW Version: 0x%02x, system_rev: %x\n",
 						ic_fw_ver, system_rev);
 	if (0 /* ic_fw_ver < BIN_FW_VERSION */) {
+		int retry = NUM_OF_RETRY_UPDATE;
 		dev_err(&client->dev, "[TOUCHKEY] touchkey_update Start!!\n");
 		disable_irq(client->irq);
 

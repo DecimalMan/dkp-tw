@@ -1360,7 +1360,6 @@ static int mipi_dsi_cdp_panel_power(int on)
 	return 0;
 }
 
-static char mipi_dsi_splash_is_enabled(void);
 static int mipi_dsi_panel_power(int on)
 {
 	int ret;
@@ -1504,11 +1503,6 @@ void __init msm8960_mdp_writeback(struct memtype_reserve* reserve_table)
 	reserve_table[mdp_pdata.mem_hid].size +=
 		mdp_pdata.ov1_wb_size;
 #endif
-}
-
-static char mipi_dsi_splash_is_enabled(void)
-{
-	return mdp_pdata.cont_splash_enabled;
 }
 
 static struct platform_device mipi_dsi_renesas_panel_device = {

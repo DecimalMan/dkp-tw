@@ -43,10 +43,10 @@
 #include "sii9234_driver.h"
 
 static int en_irq;
-static int g_mutex_cnt;
-static int g_cbus_mutex_cnt;
 #undef	__SII9234_MUTEX_DEBUG__
 #ifdef	__SII9234_MUTEX_DEBUG__
+static int g_mutex_cnt;
+static int g_cbus_mutex_cnt;
 
 #define	sii9234_mutex_lock(prm)	\
 	do { \

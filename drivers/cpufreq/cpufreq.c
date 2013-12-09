@@ -547,11 +547,10 @@ static ssize_t store_scaling_min_freq
 		else if (value <= MAX_FREQ_LIMIT)
 			cpufreq_set_limit_defered(USER_MIN_START, value);
 	}
-
-	return count;
 #else
 	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_SET, value);
 #endif
+	return count;
 }
 
 struct freq_work_struct {
@@ -626,11 +625,10 @@ static ssize_t store_scaling_max_freq
 		else if (value >= MIN_FREQ_LIMIT)
 			cpufreq_set_limit_defered(USER_MAX_START, value);
 	}
-
-	return count;
 #else
 	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_MAX | QDVFS_SET, value);
 #endif
+	return count;
 }
 
 /**
@@ -2405,7 +2403,7 @@ struct qdvfs_work {
 	char flag;
 };
 void do_queued_dvfs(struct work_struct *work) {
-	struct qdvfs_work *q = work;
+	struct qdvfs_work *q = (struct qdvfs_work *)work;
 	int i;
 	mutex_lock(&qdvfs_lock);
 	printk(KERN_DEBUG "%s: %s %s %s (%i)\n", __func__,
@@ -2433,7 +2431,7 @@ void do_queued_dvfs(struct work_struct *work) {
 			&new.user_policy.max : &new.user_policy.min;
 		if (q->flag & QDVFS_SET) {
 			if (q->flag & QDVFS_USER) {
-				if (*user == *active == q->value)
+				if (*user == *active && *active == q->value)
 					goto out;
 			} else {
 				if (q->flag & QDVFS_MAX) {
@@ -2448,7 +2446,7 @@ void do_queued_dvfs(struct work_struct *work) {
 			}
 			*active = q->value;
 		} else {
-			if (active == *user)
+			if (*active == *user)
 				goto out;
 			*active = *user;
 		}

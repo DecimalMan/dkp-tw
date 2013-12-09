@@ -307,21 +307,26 @@ static int mdp_hist_lut_block2mgmt(uint32_t block,
 static int mdp_hist_lut_write_off(struct mdp_hist_lut_data *data,
 		struct mdp_hist_lut_info *info, uint32_t offset)
 {
-	int i;
-	uint32_t element[MDP_HIST_LUT_SIZE];
+	int i, ret = 0;
+	uint32_t *element =
+		kmalloc(sizeof(uint32_t) * MDP_HIST_LUT_SIZE, GFP_KERNEL);
 	uint32_t base = mdp_block2base(info->block);
 	uint32_t sel = info->bank_sel;
 
+	if (!element)
+		return -ENOMEM;
 
 	if (data->len != MDP_HIST_LUT_SIZE) {
 		pr_err("%s: data->len != %d", __func__, MDP_HIST_LUT_SIZE);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	if (copy_from_user(&element, data->data,
 				MDP_HIST_LUT_SIZE * sizeof(uint32_t))) {
 		pr_err("%s: Error copying histogram data", __func__);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out;
 	}
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	for (i = 0; i < MDP_HIST_LUT_SIZE; i++)
@@ -329,7 +334,9 @@ static int mdp_hist_lut_write_off(struct mdp_hist_lut_data *data,
 				element[i]);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
-	return 0;
+out:
+	kfree(element);
+	return ret;
 }
 
 static int mdp_hist_lut_write(struct mdp_hist_lut_data *data,

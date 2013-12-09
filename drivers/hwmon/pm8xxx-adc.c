@@ -471,12 +471,11 @@ int pm8921_enable_batt_therm(u8 en)
 	}
 
 	rc = pm8xxx_writeb(adc_pmic->dev->parent, CHG_CNTRL_2, reg);
-	if (rc) {
+	if (rc)
 		pr_err("pm8xxx_writeb failed: addr=%03X, rc=%d\n",
 			CHG_CNTRL_2, rc);
-		return rc;
-	}
 
+	return rc;
 }
 
 static void pm8xxx_adc_btm_warm_scheduler_fn(struct work_struct *work)

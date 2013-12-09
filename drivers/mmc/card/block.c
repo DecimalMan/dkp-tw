@@ -1430,31 +1430,6 @@ static int mmc_blk_alloc_part(struct mmc_card *card,
 	return 0;
 }
 
-static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
-{
-	int ret = 0;
-
-	if (!mmc_card_mmc(card))
-		return 0;
-
-	if (card->ext_csd.boot_size) {
-		ret = mmc_blk_alloc_part(card, md, EXT_CSD_PART_CONFIG_ACC_BOOT0,
-					 card->ext_csd.boot_size >> 9,
-					 true,
-					 "boot0");
-		if (ret)
-			return ret;
-		ret = mmc_blk_alloc_part(card, md, EXT_CSD_PART_CONFIG_ACC_BOOT1,
-					 card->ext_csd.boot_size >> 9,
-					 true,
-					 "boot1");
-		if (ret)
-			return ret;
-	}
-
-	return ret;
-}
-
 static int
 mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
 {

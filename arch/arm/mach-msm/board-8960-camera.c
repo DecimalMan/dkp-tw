@@ -3016,31 +3016,6 @@ static struct spi_board_info s5c73m3_spi_info[] __initdata = {
 };
 #endif
 
-static struct pm8xxx_mpp_config_data privacy_light_on_config = {
-	.type		= PM8XXX_MPP_TYPE_SINK,
-	.level		= PM8XXX_MPP_CS_OUT_5MA,
-	.control	= PM8XXX_MPP_CS_CTRL_MPP_LOW_EN,
-};
-
-static struct pm8xxx_mpp_config_data privacy_light_off_config = {
-	.type		= PM8XXX_MPP_TYPE_SINK,
-	.level		= PM8XXX_MPP_CS_OUT_5MA,
-	.control	= PM8XXX_MPP_CS_CTRL_DISABLE,
-};
-
-static int32_t msm_camera_8960_ext_power_ctrl(int enable)
-{
-	int rc = 0;
-	if (enable) {
-		rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(12),
-			&privacy_light_on_config);
-	} else {
-		rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(12),
-			&privacy_light_off_config);
-	}
-	return rc;
-}
-
 static int get_mclk_rev(void)
 {
 #if defined(CONFIG_MACH_M2_ATT)

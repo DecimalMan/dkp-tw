@@ -1148,7 +1148,6 @@ static void venc_ip_buffer_done(void *cookie, u32 status,
 static int vsg_release_input_frame(void *cookie, struct vsg_buf_info *buf)
 {
 	struct file *filp = cookie;
-	struct wfd_inst *inst = filp->private_data;
 	struct wfd_device *wfd_dev =
 		(struct wfd_device *)video_drvdata(filp);
 	int rc = 0;
@@ -1164,7 +1163,6 @@ static int vsg_release_input_frame(void *cookie, struct vsg_buf_info *buf)
 static int vsg_encode_frame(void *cookie, struct vsg_buf_info *buf)
 {
 	struct file *filp = cookie;
-	struct wfd_inst *inst = filp->private_data;
 	struct wfd_device *wfd_dev =
 		(struct wfd_device *)video_drvdata(filp);
 	struct venc_buf_info venc_buf;

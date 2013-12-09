@@ -196,11 +196,13 @@ enum pmic_chg_interrupts {
 	PM_CHG_MAX_INTS,
 };
 
+#ifdef CONFIG_PM8921_BMS
 struct bms_notify {
 	int			is_battery_full;
 	int			is_charging;
 	struct	work_struct	work;
 };
+#endif
 
 /**
  * struct pm8921_chg_chip -device information
@@ -251,7 +253,9 @@ struct pm8921_chg_chip {
 	struct power_supply		*ext_psy;
 	struct power_supply		batt_psy;
 	struct dentry			*dent;
+#ifdef CONFIG_PM8921_BMS
 	struct bms_notify		bms_notify;
+#endif
 	bool				keep_btm_on_suspend;
 	bool				ext_charging;
 	bool				ext_charge_done;
@@ -569,6 +573,7 @@ static int pm_chg_charge_dis(struct pm8921_chg_chip *chip, int disable)
 				disable ? CHG_CHARGE_DIS_BIT : 0);
 }
 
+#ifdef QUALCOMM_POWERSUPPLY_PROPERTY
 static bool pm_is_chg_charge_dis_bit_set(struct pm8921_chg_chip *chip)
 {
 	u8 temp = 0;
@@ -580,6 +585,7 @@ static bool pm_is_chg_charge_dis_bit_set(struct pm8921_chg_chip *chip)
 
 	return !!(temp & CHG_CHARGE_DIS_BIT);
 }
+#endif
 
 #define PM8921_CHG_V_MIN_MV	3240
 #define PM8921_CHG_V_STEP_MV	20
@@ -951,6 +957,7 @@ static int pm_chg_iweak_set(struct pm8921_chg_chip *chip, int milliamps)
 					 temp);
 }
 
+#ifdef QUALCOMM_TEMPERATURE_CONTROL
 #define PM8921_CHG_BATT_TEMP_THR_COLD	BIT(1)
 #define PM8921_CHG_BATT_TEMP_THR_COLD_SHIFT	1
 static int pm_chg_batt_cold_temp_config(struct pm8921_chg_chip *chip,
@@ -978,6 +985,7 @@ static int pm_chg_batt_hot_temp_config(struct pm8921_chg_chip *chip,
 					PM8921_CHG_BATT_TEMP_THR_HOT,
 					 temp);
 }
+#endif
 
 static int64_t read_battery_id(struct pm8921_chg_chip *chip)
 {
@@ -1123,6 +1131,7 @@ static int is_battery_charging(int fsm_state)
 	return 0;
 }
 
+#ifdef CONFIG_PM8921_BMS
 static void bms_notify(struct work_struct *work)
 {
 	struct bms_notify *n = container_of(work, struct bms_notify, work);
@@ -1147,6 +1156,7 @@ static void bms_notify_check(struct pm8921_chg_chip *chip)
 		schedule_work(&(chip->bms_notify.work));
 	}
 }
+#endif
 
 static enum power_supply_property pm_power_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
@@ -1254,6 +1264,9 @@ static int get_prop_battery_uvolts(struct pm8921_chg_chip *chip)
 #endif
 }
 
+#if !defined(CONFIG_BATTERY_MAX17040) && \
+	!defined(CONFIG_BATTERY_MAX17042) && \
+	defined(CONFIG_PM8921_BMS)
 static unsigned int voltage_based_capacity(struct pm8921_chg_chip *chip)
 {
 	unsigned int current_voltage_uv = get_prop_battery_uvolts(chip);
@@ -1269,6 +1282,7 @@ static unsigned int voltage_based_capacity(struct pm8921_chg_chip *chip)
 		return (current_voltage_mv - low_voltage) * 100
 		    / (high_voltage - low_voltage);
 }
+#endif
 
 static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 {
@@ -1972,7 +1986,9 @@ static void handle_stop_ext_chg(struct pm8921_chg_chip *chip)
 	pm8921_disable_source_current(false); /* release BATFET */
 	chip->ext_charging = false;
 	chip->ext_charge_done = false;
+#if defined(CONFIG_PM8921_BMS)
 	bms_notify_check(chip);
+#endif
 }
 
 static void handle_start_ext_chg(struct pm8921_chg_chip *chip)
@@ -2021,7 +2037,9 @@ static void handle_start_ext_chg(struct pm8921_chg_chip *chip)
 					POWER_SUPPLY_CHARGE_TYPE_FAST);
 	chip->ext_charging = true;
 	chip->ext_charge_done = false;
+#if defined(CONFIG_PM8921_BMS)
 	bms_notify_check(chip);
+#endif
 	/* Start BMS */
 	schedule_delayed_work(&chip->eoc_work, delay);
 	wake_lock(&chip->eoc_wake_lock);
@@ -2084,6 +2102,8 @@ static irqreturn_t batt_inserted_irq_handler(int irq, void *data)
  * if DC is removed and then inserted after the battery was in use.
  * Therefore the handle_start_ext_chg() is not called.
  */
+#if !defined(CONFIG_BATTERY_MAX17040) && \
+	!defined(CONFIG_BATTERY_MAX17042)
 static irqreturn_t vbatdet_low_irq_handler(int irq, void *data)
 {
 	struct pm8921_chg_chip *chip = data;
@@ -2104,6 +2124,7 @@ static irqreturn_t vbatdet_low_irq_handler(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 static irqreturn_t usbin_uv_irq_handler(int irq, void *data)
 {
@@ -2376,7 +2397,9 @@ static irqreturn_t bat_temp_ok_irq_handler(int irq, void *data)
 
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
+#if defined(CONFIG_PM8921_BMS)
 	bms_notify_check(chip);
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -2719,10 +2742,12 @@ static void eoc_worker(struct work_struct *work)
 		if (is_ext_charging(chip))
 			chip->ext_charge_done = true;
 
+#ifdef CONFIG_PM8921_BMS
 		if (chip->is_bat_warm || chip->is_bat_cool)
 			chip->bms_notify.is_battery_full = 0;
 		else
 			chip->bms_notify.is_battery_full = 1;
+#endif
 		/* declare end of charging by invoking chgdone interrupt */
 		chgdone_irq_handler(chip->pmic_chg_irq[CHGDONE_IRQ], chip);
 		wake_unlock(&chip->eoc_wake_lock);
@@ -2763,6 +2788,7 @@ static void set_appropriate_battery_current(struct pm8921_chg_chip *chip)
 }
 
 #define TEMP_HYSTERISIS_DEGC 2
+#ifdef QUALCOMM_TEMPERATURE_CONTROL
 static void battery_cool(bool enter)
 {
 	pr_debug("enter = %d\n", enter);
@@ -2831,6 +2857,7 @@ static int configure_btm(struct pm8921_chg_chip *chip)
 
 	return rc;
 }
+#endif
 
 /**
  * set_disable_status_param -

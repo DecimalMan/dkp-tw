@@ -324,7 +324,7 @@ static int random_depletions = 0;
 
 /* Erandom stuff */
 void init_rand_state(void);
-static void erandom_get_random_bytes(char *buf, size_t count);
+static void erandom_get_random_bytes(void *buf, int count);
 static DEFINE_SPINLOCK(erandom_lock);
 static unsigned int erandom_bytes_read = 0;
 static int erandom_stir_thresh = 4096;
@@ -1202,7 +1202,7 @@ static void _erandom_get_random_bytes(u8 *buf, size_t count) {
 	}
 }
 
-static inline void erandom_get_random_bytes(char *buf, size_t count) {
+static void erandom_get_random_bytes(void *buf, int count) {
 	unsigned long flags;
 	spin_lock_irqsave(&erandom_lock, flags);
 	_erandom_get_random_bytes((u8 *)buf, count);

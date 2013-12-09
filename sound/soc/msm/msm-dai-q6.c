@@ -713,7 +713,6 @@ static int msm_dai_q6_dai_auxpcm_probe(struct snd_soc_dai *dai)
 {
 	struct msm_dai_q6_dai_data *dai_data;
 	int rc = 0;
-	struct clk *aux_pcm_clk;
 
 	struct msm_dai_auxpcm_pdata *auxpcm_pdata =
 			(struct msm_dai_auxpcm_pdata *) dai->dev->platform_data;

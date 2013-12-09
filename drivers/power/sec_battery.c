@@ -297,6 +297,7 @@ static int sec_bat_check_vf(struct sec_bat_info *info)
 	return 0;
 }
 
+#if 0
 static int sec_bat_check_detbat(struct sec_bat_info *info)
 {
 	struct power_supply *psy = power_supply_get_by_name(info->charger_name);
@@ -348,6 +349,7 @@ static int sec_bat_check_detbat(struct sec_bat_info *info)
 
 	return value.intval;
 }
+#endif
 
 static int sec_bat_set_fuelgauge_reset(struct sec_bat_info *info)
 {

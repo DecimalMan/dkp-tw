@@ -1122,11 +1122,12 @@ static const uint8 *hdmi_edid_find_block(const uint8 *in_buf,
 	}
 	start_DTD = in_buf[2];
 	while (offset < end_dbc_offset) {
+		uint8 block_len;
 		/* some block_data is optional in CEA EDID*/
 		if (start_DTD <= offset)
 			break;
 
-		uint8 block_len = in_buf[offset] & 0x1F;
+		block_len = in_buf[offset] & 0x1F;
 		if ((in_buf[offset] >> 5) == type) {
 			*len = block_len;
 			DEV_DBG("EDID: block=%d found @ %d with length=%d\n",

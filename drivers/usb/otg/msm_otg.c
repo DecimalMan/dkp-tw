@@ -635,28 +635,6 @@ static int msm_otg_reset(struct otg_transceiver *otg)
 	return 0;
 }
 
-static int msm_otg_set_suspend(struct otg_transceiver *otg, int suspend)
-{
-	struct msm_otg *motg = container_of(otg, struct msm_otg, otg);
-
-	/*
-	 * Allow bus suspend only for host mode.  Device mode bus suspend
-	 * is not implemented yet.
-	 */
-	if (!test_bit(ID, &motg->inputs) || test_bit(ID_A, &motg->inputs)) {
-		/*
-		 * ID_GND --> ID_A transition can not be detected in LPM.
-		 * Disallow host bus suspend when ACA is enabled.
-		 */
-		if (suspend && !aca_enabled())
-			pm_runtime_put(otg->dev);
-		else
-			pm_runtime_resume(otg->dev);
-	}
-
-	return 0;
-}
-
 #define PHY_SUSPEND_TIMEOUT_USEC	(500 * 1000)
 #define PHY_RESUME_TIMEOUT_USEC	(100 * 1000)
 
@@ -2346,27 +2324,6 @@ static ssize_t store_usb_device_lock_state(struct device *pdev,
 static DEVICE_ATTR(usb_device_lock, S_IRUGO | S_IWUSR,
 		show_usb_device_lock_state, store_usb_device_lock_state);
 
-static irqreturn_t msm_pmic_id_irq(int irq, void *data)
-{
-	struct msm_otg *motg = data;
-
-	if (aca_id_turned_on)
-		return IRQ_HANDLED;
-
-	if (irq_read_line(motg->pdata->pmic_id_irq)) {
-		pr_debug("PMIC: ID set\n");
-		set_bit(ID, &motg->inputs);
-	} else {
-		pr_debug("PMIC: ID clear\n");
-		clear_bit(ID, &motg->inputs);
-	}
-
-	if (motg->otg.state != OTG_STATE_UNDEFINED)
-		schedule_work(&motg->sm_work);
-
-	return IRQ_HANDLED;
-}
-
 #ifdef CONFIG_USB_HOST_NOTIFY
 static void msm_otg_sm_work_timer_func(unsigned long data)
 {
@@ -3226,8 +3183,8 @@ static int __devexit msm_otg_remove(struct platform_device *pdev)
 	cancel_work_sync(&motg->notify_work);
 	cancel_delayed_work_sync(&motg->late_power_work);
 	if (motg->pdata->otg_power_gpio && motg->pdata->otg_power_irq) {
-		cancel_work_sync(&motg->otg_power_work);
 		int ret;
+		cancel_work_sync(&motg->otg_power_work);
 		ret = regulator_disable(ext_otg_sw);
 		if (ret) {
 			pr_err("unable to disable vbus_otg\n");

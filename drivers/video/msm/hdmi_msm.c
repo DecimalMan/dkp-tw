@@ -773,7 +773,7 @@ static void hdmi_msm_turn_on(void);
 static int hdmi_msm_audio_off(void);
 static int hdmi_msm_read_edid(void);
 static void hdmi_msm_hpd_off(void);
-static int hdmi_msm_hpd_on();
+static int hdmi_msm_hpd_on(void);
 static void hdmi_msm_send_event(boolean on);
 #if defined(CONFIG_VIDEO_MHL_V1) || defined(CONFIG_VIDEO_MHL_V2) \
 		|| defined(CONFIG_VIDEO_MHL_TAB_V2)
@@ -4646,6 +4646,7 @@ error1:
 	return rc;
 }
 
+#ifdef	MHL_HPD_SOLUTION
 static int hdmi_msm_power_ctrl(boolean enable)
 {
 	int rc = 0;
@@ -4667,6 +4668,7 @@ static int hdmi_msm_power_ctrl(boolean enable)
 
 	return rc;
 }
+#endif
 
 static int hdmi_msm_power_on(struct platform_device *pdev)
 {

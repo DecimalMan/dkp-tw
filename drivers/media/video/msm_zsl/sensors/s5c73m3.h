@@ -574,6 +574,7 @@ MIPI_BIT_RATE_640MHz=3,
 MIPI_BIT_RATE_720MHz=4,
 MIPI_BIT_RATE_750MHz=5,
 */
+#if 0
 static u32 S5C73M3_YUV_PREVIEW[] = {
 	0x00500009,
 	0x00545000,
@@ -588,6 +589,7 @@ static u32 S5C73M3_YUV_PREVIEW[] = {
 	0x00545080,
 	0x0F140004,
 };
+#endif
 
 static u32 S5C73M3_HDR[] = {
 	0x00500009,
@@ -730,6 +732,7 @@ static u32 S5C73M3_PREVIEW[] = {
 	0x0F140003,
 };
 
+#if 0
 /* Below Not used settings will be removed later */
 static u32 S5C73M3_INTERLEAVED_PREVIEW[] = {
 	0x00500009,
@@ -1063,6 +1066,7 @@ static u32 S5C73M3_OTP_PAGE[] = {
 0x0054A000,
 0x0F140001,
 };
+#endif
 
 extern int s5c73m3_spi_read(u8 *buf, size_t len, const int rxSize);
 extern int s5c73m3_spi_write(const u8 *addr, const int len, const int txSize);

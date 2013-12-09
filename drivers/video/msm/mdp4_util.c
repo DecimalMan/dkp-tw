@@ -37,7 +37,7 @@
 int middle_of_blt_change = 0;
 #endif
 
-#define MDP4_SW_RESET;
+#define MDP4_SW_RESET
 
 
 unsigned is_mdp4_hw_reset(void)

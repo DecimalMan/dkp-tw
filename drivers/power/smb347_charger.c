@@ -333,7 +333,6 @@ static void smb347_set_command_reg(struct i2c_client *client)
 
 static void smb347_enter_suspend(struct i2c_client *client)
 {
-	int val, reg;
 	u8 data = 0;
 
 	pr_info("%s: ENTER SUSPEND\n", __func__);
@@ -1843,7 +1842,7 @@ static int __devinit smb347_probe(struct i2c_client *client,
 	ret =
 		smb347_write_reg(client, SMB347_SYSOK_USB30_SELECTION, value);
 	if (ret < 0) {
-		pr_err("%s: INOK polarity setting error!\n");
+		pr_err("%s: INOK polarity setting error!\n", __func__);
 	}
 
 	ret =

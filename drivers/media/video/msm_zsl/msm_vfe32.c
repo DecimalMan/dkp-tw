@@ -3125,7 +3125,7 @@ static void vfe32_process_zsl_frame(void)
 		else
 		    no_free_buffer_count = 0;
 		CDBG("count %d\n", no_free_buffer_count);
-		CDBG("time_diff %d, tv_msec %d, pre_frame_msec %d\n",
+		CDBG("time_diff %u, tv_msec %lu, pre_frame_msec %lu\n",
 		       time_diff, TV_MSEC(tv.tv_nsec), pre_frame_msec);
 		/* max 66msec * 60 = 3960msec */
 		/* min 33msec * 60 = 1980msec */

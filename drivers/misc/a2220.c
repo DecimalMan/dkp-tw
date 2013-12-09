@@ -599,7 +599,7 @@ static unsigned char pcm_reset[] = {
 
 static ssize_t chk_wakeup_a2220(struct a2220_data *a2220)
 {
-	int i, rc = 0, retry = 4;
+	int rc = 0, retry = 4;
 
 	if (a2220->suspended == 1) {
 		mdelay(1);
@@ -1046,7 +1046,7 @@ static long a2220_ioctl(struct file *file, unsigned int cmd,
 					A2220_CONFIG_VP);
 		mutex_unlock(&a2220->lock);
 		break;
-#if ENABDIAG_IOCTLS
+#ifdef ENABDIAG_IOCTLS
 	case A2220_SET_MIC_ONOFF:
 		mutex_lock(&a2220->lock);
 		rc = chk_wakeup_a2220(a2220);

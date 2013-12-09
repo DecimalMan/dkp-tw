@@ -79,7 +79,6 @@ static int max8952_voltage(struct max8952_data *max8952, u8 mode)
 static int max8952_list_voltage(struct regulator_dev *rdev,
 		unsigned int selector)
 {
-	struct max8952_data *max8952 = rdev_get_drvdata(rdev);
 	int ret;
 
 	if (rdev_get_id(rdev) != 0)
@@ -168,39 +167,6 @@ static int _max8952_set_voltage(struct regulator_dev *rdev,
 	return 0;
 }
 /*end lmh_add, New set_voltage func. for camera ISP core power setting*/
-
-static int max8952_set_voltage(struct regulator_dev *rdev,
-			       int min_uV, int max_uV, unsigned *selector)
-{
-	struct max8952_data *max8952 = rdev_get_drvdata(rdev);
-	s8 vid = -1, i;
-
-	if (!gpio_is_valid(max8952->pdata->gpio_vid0) ||
-			!gpio_is_valid(max8952->pdata->gpio_vid1)) {
-		/* DVS not supported */
-		return -EPERM;
-	}
-
-	for (i = 0; i < MAX8952_NUM_DVS_MODE; i++) {
-		int volt = max8952_voltage(max8952, i);
-
-		/* Set the voltage as low as possible within the range */
-		if (volt <= max_uV && volt >= min_uV)
-			if (vid == -1 || max8952_voltage(max8952, vid) > volt)
-				vid = i;
-	}
-
-	if (vid >= 0 && vid < MAX8952_NUM_DVS_MODE) {
-		max8952->vid0 = (vid % 2 == 1);
-		max8952->vid1 = (((vid >> 1) % 2) == 1);
-		*selector = vid;
-		gpio_set_value(max8952->pdata->gpio_vid0, max8952->vid0);
-		gpio_set_value(max8952->pdata->gpio_vid1, max8952->vid1);
-	} else
-		return -EINVAL;
-
-	return 0;
-}
 
 static struct regulator_ops max8952_ops = {
 	.list_voltage		= max8952_list_voltage,

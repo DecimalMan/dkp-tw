@@ -112,13 +112,12 @@ struct s5c73m3_format {
 	u16 order;
 };
 static int32_t s5c73m3_sensor_setting(int update_type, int rt);
-static int s5c73m3_set_touch_auto_focus();
+static int s5c73m3_set_touch_auto_focus(void);
 static int s5c73m3_wait_ISP_status(void);
 static int s5c73m3_set_fps(int fps);
 static int s5c73m3_set_af_mode(int val);
 static int s5c73m3_open_firmware_file(const char *filename,
 	u8 *buf, u16 offset, u16 size);
-
 
 static DECLARE_WAIT_QUEUE_HEAD(s5c73m3_wait_queue);
 
@@ -452,7 +451,6 @@ static int s5c73m3_wait_ISP_status(void)
 {
 	int err = 0;
 	u16 stream_status = 0;
-	u16 pre_stream_status = 0;
 	int index = 0;
 
 	CAM_DBG_H("Entered\n");
@@ -502,26 +500,6 @@ static int s5c73m3_wait_ISP_status(void)
 
 void s5c73m3_jpeg_update(void)
 {
-	int count = 0;
-	int status = 0;
-
-	CAM_DBG_H("Entered\n");
-
-}
-
-static int s5c73m3_sensor_af_status(void)
-{
-	int ret = 0;
-	int status = 0;
-
-	CAM_DBG_H("Entered\n");
-}
-
-static int s5c73m3_sensor_af_result(void)
-{
-	int ret = 0;
-	int status = 0;
-
 	CAM_DBG_H("Entered\n");
 }
 
@@ -612,6 +590,7 @@ retry:
 static int s5c73m3_set_preview(void)
 {
 	CAM_DBG_H("Entered\n");
+	return 0;
 }
 
 static int s5c73m3_set_capture(void)
@@ -647,9 +626,6 @@ bool s5c73m3_CAF_enabled(void)
 static int s5c73m3_s_stream_preview(int enable, int rt)
 {
 	int err = 0;
-	u16 stream_status = 0;
-	u16 pre_stream_status = 0;
-	int index = 0;
 
 	CAM_DBG_M("Entered, enable %d\n", enable);
 
@@ -824,9 +800,11 @@ static int s5c73m3_s_stream_preview(int enable, int rt)
 static int s5c73m3_sensor_setting(int update_type, int rt)
 {
 	int32_t rc = 0;
+#ifdef QC_TEST
 	int index = 0;
 	u16 stream_status = 0;
 	u16 temp, temp1, temp2, temp3 = 0;
+#endif
 
 	struct msm_camera_csid_params s5c73m3_csid_params;
 	struct msm_camera_csiphy_params s5c73m3_csiphy_params;
@@ -1524,7 +1502,6 @@ static int s5c73m3_aeawb_lock_unlock(int32_t ae_lock, int32_t awb_lock)
 
 static int s5c73m3_set_focus(int val)
 {
-	u16 isneed_flash = false;
 	int err = 0;
 
 	CAM_DBG_M("%s, mode %#x\n",
@@ -1559,7 +1536,6 @@ static int s5c73m3_set_focus(int val)
 
 static int s5c73m3_set_caf_focus(int val)
 {
-	u16 isneed_flash = false;
 	int err = 0;
 
 	CAM_DBG_M("%s, mode %#x\n",
@@ -1597,7 +1573,7 @@ static int s5c73m3_get_pre_flash(int val)
 	return err;
 }
 
-static int s5c73m3_get_af_result()
+static int s5c73m3_get_af_result(void)
 {
 	int ret = 0;
 	u16 af_status = S5C73M3_AF_STATUS_UNFOCUSED;
@@ -1726,7 +1702,7 @@ retry:
 	return 0;
 }
 
-static int s5c73m3_set_touch_auto_focus()
+static int s5c73m3_set_touch_auto_focus(void)
 {
 	int err;
 
@@ -1781,7 +1757,7 @@ static int s5c73m3_set_touch_auto_focus()
 	return 0;
 }
 
-static int s5c73m3_capture_firework()
+static int s5c73m3_capture_firework(void)
 {
 	int err = 0;
 	CAM_DBG_H("E\n");
@@ -1792,7 +1768,7 @@ static int s5c73m3_capture_firework()
 	return err;
 }
 
-static int s5c73m3_capture_nightshot()
+static int s5c73m3_capture_nightshot(void)
 {
 	int err = 0;
 	CAM_DBG_H("E\n");
@@ -1967,9 +1943,9 @@ static int s5c73m3_set_low_light(int val)
 
 static int s5c73m3_set_antishake(int val)
 {
+	int err = 0;
 	CAM_DBG_H("Entered, %d\n", val);
 
-	int err = 0;
 	if (val) {
 		err = s5c73m3_writeb(S5C73M3_AE_MODE,
 			S5C73M3_ANTI_SHAKE_ON);
@@ -2183,7 +2159,7 @@ static int s5c73m3_set_vdis(int onoff)
 static int s5c73m3_get_lux(void)
 {
 	int err = 0;
-	int lux_val = 0;
+	short unsigned int lux_val = 0;
 
 	err = s5c73m3_read(0x0009, 0x5C88, &lux_val);
 	if (err < 0) {
@@ -2252,7 +2228,6 @@ static int s5c73m3_load_fw(void)
 	#define FW_WRITE_SIZE 65536
 #endif
 
-	struct device *dev = s5c73m3_ctrl->sensor_dev->v4l2_dev->dev;
 	int err, txSize;
 
 	struct file *fp = NULL;
@@ -2324,7 +2299,6 @@ static int s5c73m3_SPI_booting(void)
 {
 	u16 read_val;
 	int i, err;
-	u32 test_start_pointer = 0, test_end_pointer = 0;
 
 	CAM_DBG_M("Entered\n");
 
@@ -2439,7 +2413,7 @@ static int s5c73m3_dump_fw(void)
 	return 0;
 }
 
-static int s5c73m3_get_sensor_fw_binary()
+static int s5c73m3_get_sensor_fw_binary(void)
 {
 	u16 read_val;
 	int i, rxSize;
@@ -2633,7 +2607,6 @@ static int s5c73m3_get_sensor_fw_version(void)
 {
 	u16 read_val;
 	int i, err;
-	u32 test_start_pointer = 0, test_end_pointer = 0;
 	u16 temp_buf;
 
 	CAM_DBG_H("Entered\n");
@@ -2840,7 +2813,6 @@ static int s5c73m3_get_phone_fw_version(void)
 #define FW_WRITE_SIZE 65536
 #endif
 
-	struct device *dev = s5c73m3_ctrl->sensor_dev->v4l2_dev->dev;
 	static char *buf; /*static*/
 	int err = 0;
 	int retVal = 0;
@@ -3014,76 +2986,6 @@ static int s5c73m3_update_camerafw_to_FROM(void)
 		return 0;
 }
 
-static int s5c73m3_SPI_booting_by_ISP(void)
-{
-	u16 read_val;
-	u16 sensor_fw;
-	u16 sensor_type;
-	u16 temp_buf;
-	int i;
-	int err = 0;
-
-	/*ARM go*/
-	err = s5c73m3_write(0x3000, 0x0004, 0xFFFF);
-	CHECK_ERR(err);
-
-	udelay(400);
-
-	/*Check boot done*/
-	for (i = 0; i < 3; i++) {
-		err = s5c73m3_read(0x3010, 0x0010, &read_val);
-		CHECK_ERR(err);
-
-		if (read_val == 0x0C)
-			break;
-
-		udelay(100);
-	}
-
-	if (read_val != 0x0C) {
-		cam_err("boot fail, read_val %#x\n", read_val);
-		return -1;
-	}
-
-	/*P,M,S and Boot Mode*/
-	err = s5c73m3_write(0x3010, 0x0014, 0x2146);
-	CHECK_ERR(err);
-	err = s5c73m3_write(0x3010, 0x0010, 0x230C);
-	CHECK_ERR(err);
-
-	udelay(200);
-
-	/*Check SPI ready*/
-	for (i = 0; i < 300; i++) {
-		err = s5c73m3_read(0x3010, 0x0010, &read_val);
-		CHECK_ERR(err);
-
-		if (read_val == 0x230E)
-			break;
-
-		udelay(100);
-	}
-
-	if (read_val != 0x230E) {
-		cam_err("SPI not ready, read_val %#x\n", read_val);
-		return -1;
-	}
-
-	/*ARM reset*/
-	err = s5c73m3_write(0x3000, 0x0004, 0xFFFD);
-	CHECK_ERR(err);
-
-	/*remap*/
-	err = s5c73m3_write(0x3010, 0x00A4, 0x0183);
-	CHECK_ERR(err);
-
-	/*ARM go*/
-	err = s5c73m3_write(0x3000, 0x0004, 0xFFFF);
-	CHECK_ERR(err);
-
-	return err;
-}
-
 static int s5c73m3_check_fw_date(void)
 {
 	u8 sensor_date[5] = {0,};
@@ -3144,8 +3046,8 @@ static int s5c73m3_check_fw(const struct msm_camera_sensor_info *data,
 		}
 	}
 
-	data->sensor_platform_info->sensor_get_fw(&s5c73m3_ctrl->sensor_fw,
-		&s5c73m3_ctrl->phone_fw);
+	data->sensor_platform_info->sensor_get_fw(s5c73m3_ctrl->sensor_fw,
+		s5c73m3_ctrl->phone_fw);
 
 	retVal = s5c73m3_check_fw_date();
 
@@ -3211,8 +3113,8 @@ static int s5c73m3_check_fw(const struct msm_camera_sensor_info *data,
 			s5c73m3_ctrl->phone_fw[S5C73M3_FW_VER_LEN+1] = '\0';
 			CAM_DBG_M("FW is %s!!\n", &s5c73m3_ctrl->phone_fw);
 			data->sensor_platform_info->sensor_get_fw(
-				&s5c73m3_ctrl->sensor_fw,
-				&s5c73m3_ctrl->phone_fw);
+				s5c73m3_ctrl->sensor_fw,
+				s5c73m3_ctrl->phone_fw);
 		} else
 			cam_err("Warnning!! can't check FW!\n");
 		if (buf)
@@ -3237,23 +3139,6 @@ static int s5c73m3_check_fw(const struct msm_camera_sensor_info *data,
 
 	CAM_DBG_M("Exit\n");
 	return 0;
-}
-
-static int s5c73m3_init_param(void)
-{
-	int err = 0;
-
-	CAM_DBG_H("Entered\n");
-
-	err = s5c73m3_i2c_write_block(S5C73M3_INIT,
-		sizeof(S5C73M3_INIT)/sizeof(S5C73M3_INIT[0]));
-
-	if (err < 0) {
-		cam_err("failed s5c73m3_write_block!!\n");
-		return -EIO;
-	}
-
-	return err;
 }
 
 static int s5c73m3_read_vdd_core(void)
@@ -3358,7 +3243,6 @@ static int s5c73m3_sensor_init_probe(const struct msm_camera_sensor_info *data)
 {
 	int rc = 0;
 	int retVal = 0;
-	int temp = 0;
 
 	CAM_DBG_M("Entered\n");
 
@@ -3726,7 +3610,6 @@ int s5c73m3_sensor_config(void __user *argp)
 int s5c73m3_sensor_release(void)
 {
 	int rc = 0;
-	int temp = 0;
 	CAM_DBG_M("Entered\n");
 	s5c73m3_set_af_softlanding();
 	usleep(10*1000);
@@ -3794,7 +3677,7 @@ static int s5c73m3_sensor_probe(const struct msm_camera_sensor_info *info,
 	CAM_DBG_M("Entered\n");
 
 	if (rc < 0 || s5c73m3_client == NULL) {
-		cam_err("%d :%d\n", rc, s5c73m3_client);
+		cam_err("%d :%p\n", rc, s5c73m3_client);
 		rc = -ENOTSUPP;
 		goto probe_done;
 	}
