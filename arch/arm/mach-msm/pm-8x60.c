@@ -64,6 +64,7 @@
 
 //#define SYSFS
 //#define DEBUG
+void msm_gpio_print_enabled(void);
 
 /******************************************************************************
  * Debug Definitions

@@ -676,12 +676,23 @@ static int adreno_dump(struct kgsl_device *device)
 	}
 
 	/* Dump the registers if the user asked for it */
+#if !CONFIG_AXXX_REV
 	if (adreno_is_a20x(adreno_dev))
 		adreno_dump_regs(device, a200_registers,
 			a200_registers_count);
 	else if (adreno_is_a22x(adreno_dev))
 		adreno_dump_regs(device, a220_registers,
 			a220_registers_count);
+#elif __adreno_is_a20x
+	adreno_dump_regs(device, a200_registers,
+		a200_registers_count);
+#elif __adreno_is_a22x
+	adreno_dump_regs(device, a220_registers,
+		a220_registers_count);
+#else
+#error "Unknown adreno revision selected"
+#endif
+
 
 error_vfree:
 	vfree(rb_copy);

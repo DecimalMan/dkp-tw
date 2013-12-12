@@ -45,6 +45,8 @@ static struct apr_svc *apr_handle_m;
 static struct dentry *dentry;
 static char l_buf[4096];
 
+void core_open(void);
+
 uint32_t core_get_adsp_version(void)
 {
 	struct apr_hdr *hdr;

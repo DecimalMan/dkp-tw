@@ -15,8 +15,10 @@
  *  BAM DMUX module.
  */
 
-//#define DEBUG
-//#define BOGUS
+#ifdef CONFIG_DEBUG_FS
+#define DEBUG
+#define BOGUS
+#endif
 
 #include <linux/delay.h>
 #include <linux/module.h>

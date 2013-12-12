@@ -364,7 +364,7 @@ static inline void notify_wcnss_smd(void)
 	MSM_TRIG_A2WCNSS_SMD_INT;
 }
 
-#ifdef BOGUS
+#ifdef CONFIG_DEBUG_FS
 void smd_diag(void)
 {
 	char *x;

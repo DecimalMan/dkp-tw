@@ -244,6 +244,7 @@ static int mdp_stat_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#if 0
 static ssize_t mdp_stat_write(
 	struct file *file,
 	const char __user *buff,
@@ -256,7 +257,6 @@ static ssize_t mdp_stat_write(
 		return -EFAULT;
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
-	memset((char *)&mdp4_stat, 0 , sizeof(mdp4_stat));	/* reset */
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 
 	return count;
@@ -503,6 +503,7 @@ static const struct file_operations mdp_stat_fops = {
 	.read = mdp_stat_read,
 	.write = mdp_stat_write,
 };
+#endif
 #endif
 
 /*
@@ -1192,7 +1193,7 @@ int mdp_debugfs_init(void)
 		return -1;
 	}
 
-#ifdef CONFIG_FB_MSM_MDP40
+#if 0
 	if (debugfs_create_file("stat", 0644, dent, 0, &mdp_stat_fops)
 			== NULL) {
 		printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
