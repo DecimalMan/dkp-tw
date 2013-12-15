@@ -662,7 +662,7 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 #ifdef CONFIG_MACH_JAGUAR
 	RPM_LDO(L10,	 0, 1, 0, 2900000, 2900000, NULL,      0, 0),
 #else
-	RPM_LDO(L10,	 0, 1, 0, 3000000, 3000000, NULL,      0, 0),
+	RPM_LDO(L10,	 0, 1, 0,  750000, 3000000, NULL,      0, 0),
 #endif
 	RPM_LDO(L11,	 0, 1, 0, 2800000, 3300000, NULL,      0, 0),
 	RPM_LDO(L12,	 0, 1, 0, 1200000, 1200000, "8921_s4", 0, 0),
