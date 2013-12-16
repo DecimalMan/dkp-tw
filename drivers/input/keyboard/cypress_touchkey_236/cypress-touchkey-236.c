@@ -997,7 +997,7 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 		info->early_suspend.resume = cypress_touchkey_late_resume;
 		info->fb_suspend.suspend = cypress_touchkey_fb_suspend;
 		info->fb_suspend.resume = cypress_touchkey_fb_resume;
-		info->fb_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB+1;
+		info->fb_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB-5;
 		register_early_suspend(&info->early_suspend);
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 
@@ -1235,11 +1235,16 @@ static void cypress_touchkey_early_suspend(struct early_suspend *h) {
 	struct cypress_touchkey_info *info =
 		container_of(h, struct cypress_touchkey_info, early_suspend);
 
-	if (mutex_trylock(&info->touchkey_led_mutex)) {
-		INIT_COMPLETION(info->anim_done);
-		mutex_unlock(&info->touchkey_led_mutex);
-	}
+	mutex_lock(&info->touchkey_led_mutex);
+	INIT_COMPLETION(info->anim_done);
+	mutex_unlock(&info->touchkey_led_mutex);
+
 	cypress_touchkey_brightness_set(&info->leds, LED_OFF);
+
+	mutex_lock(&info->pm_mutex);
+	info->is_powering_on = true;
+	disable_irq(info->irq);
+	mutex_unlock(&info->pm_mutex);
 }
 
 static void cypress_touchkey_late_resume(struct early_suspend *h) {
@@ -1250,6 +1255,11 @@ static void cypress_touchkey_late_resume(struct early_suspend *h) {
 		work_busy(&info->power_work.work) ||
 		info->brightness != LED_OFF))
 		cypress_touchkey_brightness_set(&info->leds, LED_FULL);
+
+	mutex_lock(&info->pm_mutex);
+	enable_irq(info->irq);
+	info->is_powering_on = false;
+	mutex_unlock(&info->pm_mutex);
 }
 
 static void cypress_touchkey_fb_suspend(struct early_suspend *h) {
@@ -1259,8 +1269,6 @@ static void cypress_touchkey_fb_suspend(struct early_suspend *h) {
 	wait_for_completion(&info->anim_done);
 
 	mutex_lock(&info->pm_mutex);
-	info->is_powering_on = true;
-	disable_irq(info->irq);
 	if (info->pdata->gpio_led_en)
 		cypress_touchkey_con_hw(info, false);
 	info->power_onoff(0);
@@ -1275,7 +1283,6 @@ static void cypress_touchkey_fb_resume(struct early_suspend *h) {
 	info->power_onoff(1);
 	if (info->pdata->gpio_led_en)
 		cypress_touchkey_con_hw(info, true);
-	enable_irq(info->irq);
 	schedule_delayed_work(&info->finish_resume_work,
 		msecs_to_jiffies(100));
 }
@@ -1286,7 +1293,6 @@ static void cypress_touchkey_finish_resume(struct work_struct *work) {
 			finish_resume_work.work);
 
 	cypress_touchkey_auto_cal(info);
-	info->is_powering_on = false;
 	mutex_unlock(&info->pm_mutex);
 }
 #endif
