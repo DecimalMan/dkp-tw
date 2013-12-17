@@ -249,6 +249,9 @@ static ssize_t led_pattern_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size) {
 	struct leds_dev_data *info = dev_get_drvdata(dev);
 
+	printk(KERN_DEBUG "%s: setting pattern %s\n",
+		__func__, buf);
+
 	mutex_lock(&info->led_work_lock);
 
 	info->color1 = 0;
@@ -290,6 +293,7 @@ static ssize_t led_pattern_store(struct device *dev,
 		info->color2 = 0xff00;
 		break;
 	case '6':
+	case '7':
 		info->color1 = 0x14ca;
 		info->color2 = 0x82ff;
 		info->time1 = 200;
@@ -314,7 +318,7 @@ static DEVICE_ATTR(led_pattern, S_IRUGO | S_IWUSR | S_IWGRP,
 static ssize_t led_lowpower_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, 4, "%d\n", lpm_mult == 11);
+	return snprintf(buf, 4, "%d\n", lpm_mult == 25);
 }
 
 static ssize_t led_lowpower_store(struct device *dev,
@@ -324,7 +328,7 @@ static ssize_t led_lowpower_store(struct device *dev,
 
 	mutex_lock(&info->led_work_lock);
 
-	lpm_mult = buf[0] == '1' ? 11 : 100;
+	lpm_mult = buf[0] == '1' ? 25 : 100;
 
 	if (!work_busy(&info->pattern_work))
 		schedule_work(&info->pattern_work);
@@ -382,6 +386,7 @@ static ssize_t led_blink_store(struct device *dev,
 
 	printk(KERN_ALERT "[LED_blink_store] is \"%s\" (pid %i)\n",
 		current->comm, current->pid);
+	printk(KERN_DEBUG "%s: string is %s", __func__, buf);
 
 	if (size < 10)
 		return -EINVAL;
@@ -392,8 +397,9 @@ static ssize_t led_blink_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	/* TODO: adjustablize this? */
-	if (delayon || delayoff) {
+	mutex_lock(&info->led_work_lock);
+
+	if (delayon && delayoff) {
 		// "Breathing" means the LED is on less.  Compensate.
 		cycle_time = delayon = delayon / 2;
 		if (delayoff > delayon) {
@@ -402,14 +408,15 @@ static ssize_t led_blink_store(struct device *dev,
 			delayon -= delayoff;
 			delayoff = 0;
 		}
+		info->time1 = delayoff;
+		info->time2 = delayon;
+	} else {
+		info->time1 = 0;
+		info->time2 = 0;
 	}
-
-	mutex_lock(&info->led_work_lock);
 
 	info->color1 = 0;
 	info->color2 = color;
-	info->time1 = delayoff;
-	info->time2 = delayon;
 	info->timetrans = cycle_time;
 	info->pattern = 0;
 	if (!work_busy(&info->pattern_work))
@@ -500,12 +507,21 @@ static int __devinit pm8xxx_led_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, info);
         sec_led = device_create(sec_class, NULL, 0, NULL, "led");
         dev_set_drvdata(sec_led, info);
-        device_create_file(sec_led, &dev_attr_led_pattern);
-        device_create_file(sec_led, &dev_attr_led_lowpower);
-        device_create_file(sec_led, &dev_attr_led_r);
-        device_create_file(sec_led, &dev_attr_led_g);
-        device_create_file(sec_led, &dev_attr_led_b);
-        device_create_file(sec_led, &dev_attr_led_blink);
+        rc = device_create_file(sec_led, &dev_attr_led_pattern);
+        rc = device_create_file(sec_led, &dev_attr_led_lowpower);
+        rc = device_create_file(sec_led, &dev_attr_led_r);
+        rc = device_create_file(sec_led, &dev_attr_led_g);
+        rc = device_create_file(sec_led, &dev_attr_led_b);
+        rc = device_create_file(sec_led, &dev_attr_led_blink);
+
+	/* Kick off the "powering" pattern?
+	info->color1 = 0x14ca;
+	info->color2 = 0x82ff;
+	info->time1 = 200;
+	info->time2 = 200;
+	info->timetrans = 800;
+	schedule_work(&info->pattern_work);
+	*/
 
 	return 0;
 
