@@ -1247,11 +1247,6 @@ static void cypress_touchkey_late_resume(struct early_suspend *h) {
 	struct cypress_touchkey_info *info =
 		container_of(h, struct cypress_touchkey_info, early_suspend);
 
-	if (!(work_busy(&info->finish_resume_work.work) ||
-		work_busy(&info->power_work.work) ||
-		info->brightness != LED_OFF))
-		cypress_touchkey_brightness_set(&info->leds, LED_FULL);
-
 	mutex_lock(&info->pm_mutex);
 	enable_irq(info->irq);
 	info->is_powering_on = false;
