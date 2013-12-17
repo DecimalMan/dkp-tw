@@ -377,34 +377,6 @@ static int cypress_touchkey_auto_cal(struct cypress_touchkey_info *dev_info)
 	return count;
 }
 
-static int cypress_touchkey_led_on(struct cypress_touchkey_info *dev_info)
-{
-	struct cypress_touchkey_info *info = dev_info;
-	u8 buf = CYPRESS_LED_ON;
-
-	int ret;
-	ret = i2c_smbus_write_byte_data(info->client, CYPRESS_GEN, buf);
-	if (ret < 0) {
-		dev_err(&info->client->dev,
-				"[Touchkey] i2c write error [%d]\n", ret);
-	}
-	return ret;
-}
-
-static int cypress_touchkey_led_off(struct cypress_touchkey_info *dev_info)
-{
-	struct cypress_touchkey_info *info = dev_info;
-	u8 buf = CYPRESS_LED_OFF;
-
-	int ret;
-	ret = i2c_smbus_write_byte_data(info->client, CYPRESS_GEN, buf);
-	if (ret < 0) {
-		dev_err(&info->client->dev,
-				"[Touchkey] i2c write error [%d]\n", ret);
-	}
-	return ret;
-}
-
 static ssize_t touch_version_read(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
@@ -526,17 +498,7 @@ static ssize_t touch_led_control(struct device *dev,
 
 	dev_dbg(&info->client->dev, "called %s\n", __func__);
 	data = kstrtoul(buf, (int)NULL, 0);
-	if (data == 1) {
-		if (data)
-			cypress_touchkey_led_on(info);
-		else
-			cypress_touchkey_led_off(info);
-#if defined(SEC_TOUCHKEY_DEBUG)
-		dev_dbg(&info->client->dev,
-			"[TouchKey] touch_led_control : %d\n", data);
-#endif
-	} else
-		dev_dbg(&info->client->dev, "[TouchKey] touch_led_control Error\n");
+	cypress_touchkey_brightness_set(&info->leds, !!data);
 
 	return size;
 }
