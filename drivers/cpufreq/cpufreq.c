@@ -449,43 +449,119 @@ static ssize_t show_##file_name				\
 show_one(cpuinfo_min_freq, cpuinfo.min_freq);
 show_one(cpuinfo_max_freq, cpuinfo.max_freq);
 show_one(cpuinfo_transition_latency, cpuinfo.transition_latency);
-show_one(scaling_min_freq, user_policy.min);
-//show_one(scaling_max_freq, max);
 show_one(scaling_cur_freq, cur);
 #if defined(__MP_DECISION_PATCH__)
 show_one(cpu_utilization, utils);
 #endif
 
-/* thermald watches scaling_max_freq and resets it to 1512 when it's changed.
- * We filter its input and output in order to keep it behaving.  Rather than
- * run a strcmp during every show/store, we cache its task_struct.
+/* Blacklist services that shouldn't touch the policy limits.  We don't want
+ * them spamming changes, so keep track of the settings they want applied and
+ * lie if they check on them.
  */
-static struct task_struct *thermald;
-static int check_current_is_thermald(void) {
-	int ret = 0;
-	if (current != thermald) {
-		if (!strcmp(current->comm, "thermald")) {
-			printk(KERN_DEBUG "%s: found thermald (pid %u)!\n",
-				__func__, current->pid);
-			thermald = current;
-			ret = 1;
-		}
-	} else {
-		ret = 1;
+struct {
+	struct task_struct *task;
+	char *name;
+	unsigned int min;
+	unsigned int max;
+	bool allow_min;
+	bool allow_max;
+} task_blacklist[] = {
+	{ NULL, "thermald", 384000, 1512000, 0, 1 },
+	{ NULL, "mpdecision", 384000, 1512000, 0, 0 },
+};
+
+enum blacklist_allow {
+	BLACKLIST_DENY, /* No access allowed */
+	BLACKLIST_RESTORE, /* Service lifted its limit */
+	BLACKLIST_SAVE, /* Save current settings */
+	BLACKLIST_ALLOW, /* Change is permissible */
+};
+
+static int find_blacklist_idx(void) {
+	int i;
+	/* Where possible, just compare task pointers instead of strcmp()'ing */
+	for (i = 0; i < ARRAY_SIZE(task_blacklist); i++) {
+		if (current == task_blacklist[i].task)
+			return i;
 	}
-	return ret;
+	for (i = 0; i < ARRAY_SIZE(task_blacklist); i++) {
+		if (!strcmp(current->comm, task_blacklist[i].name)) {
+			task_blacklist[i].task = current;
+			printk(KERN_DEBUG "%s: found %s, pid %i\n",
+				__func__, current->comm, current->pid);
+			return i;
+		}
+	}
+	return -1;
+}
+
+static enum blacklist_allow set_filtered_limits(unsigned int val, bool is_max) {
+	int idx = find_blacklist_idx();
+
+	if (idx == -1)
+		return BLACKLIST_ALLOW;
+
+	printk(KERN_DEBUG "%s: checking task %s (%s = %u?)\n",
+		__func__, current->comm, is_max ? "max" : "min", val);
+
+	if (is_max) {
+		task_blacklist[idx].max = val;
+		if (!task_blacklist[idx].allow_max)
+			return BLACKLIST_DENY;
+		if (val >= 1512000)
+			return BLACKLIST_RESTORE;
+	} else {
+		task_blacklist[idx].min = val;
+		if (!task_blacklist[idx].allow_min)
+			return BLACKLIST_DENY;
+		if (val <= 384000)
+			return BLACKLIST_RESTORE;
+	}
+	printk(KERN_DEBUG "%s: task %s, setting %s = %u allowed\n",
+		__func__, current->comm, is_max ? "max" : "min", val);
+	return BLACKLIST_SAVE;
+}
+
+static unsigned int get_filtered_limits(unsigned int val, bool is_max) {
+	int idx = find_blacklist_idx();
+
+	if (idx == -1)
+		return 0;
+
+	printk(KERN_DEBUG "%s: lying to task %s, showing %s = %u\n",
+		__func__, current->comm, is_max ? "max" : "min",
+		is_max ? task_blacklist[idx].max : task_blacklist[idx].min);
+
+	if (is_max) {
+		if (!task_blacklist[idx].allow_max ||
+		    task_blacklist[idx].max != val)
+			return task_blacklist[idx].max;
+	} else {
+		if (!task_blacklist[idx].allow_min ||
+		    task_blacklist[idx].min != val)
+			return task_blacklist[idx].min;
+	}
+
+	return 0;
 }
 
 static ssize_t show_scaling_max_freq(struct cpufreq_policy *policy, char *buf)
 {
-	int val = 0;
+	int val = get_filtered_limits(policy->user_policy.max, 1);
 
-	if (check_current_is_thermald() &&
-		policy->max == policy->user_policy.max) {
-			val = 1512000;
-	} else {
+	if (!val)
 		val = policy->user_policy.max;
-	}
+
+	return sprintf(buf, "%u\n", val);
+}
+
+static ssize_t show_scaling_min_freq(struct cpufreq_policy *policy, char *buf)
+{
+	int val = get_filtered_limits(policy->user_policy.min, 0);
+
+	if (!val)
+		val = policy->user_policy.min;
+
 	return sprintf(buf, "%u\n", val);
 }
 
@@ -528,6 +604,7 @@ static ssize_t store_scaling_min_freq
 {
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
+	enum blacklist_allow allow;
 
 	if (unlikely(dont_touch_my_shit)) {
 		struct task_struct *t;
@@ -539,6 +616,12 @@ static ssize_t store_scaling_min_freq
 	ret = sscanf(buf, "%u", &value);
 	if (ret != 1)
 		return -EINVAL;
+	
+	allow = set_filtered_limits(value, 0);
+	if (allow == BLACKLIST_DENY)
+		return count;
+	if (allow == BLACKLIST_RESTORE)
+		value = policy->user_policy.min;
 
 #ifdef CONFIG_SEC_DVFS
 	if (policy->cpu == BOOT_CPU) {
@@ -548,7 +631,8 @@ static ssize_t store_scaling_min_freq
 			cpufreq_set_limit_defered(USER_MIN_START, value);
 	}
 #else
-	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_SET, value);
+	cpufreq_queue_dvfs(QDVFS_SET | 
+		(allow == BLACKLIST_ALLOW ? QDVFS_USER : 0), value);
 #endif
 	return count;
 }
@@ -586,7 +670,7 @@ static ssize_t store_scaling_max_freq
 {
 	unsigned int ret = -EINVAL;
 	unsigned int value = 0;
-	bool is_thermald = 0;
+	enum blacklist_allow allow;
 
 	if (unlikely(dont_touch_my_shit)) {
 		struct task_struct *t;
@@ -599,12 +683,12 @@ static ssize_t store_scaling_max_freq
 	if (ret != 1)
 		return -EINVAL;
 
-	if (check_current_is_thermald()) {
-		printk(KERN_DEBUG "%s: mangling thermald frequency %u\n", __func__, value);
-		is_thermald = 1;
-		if (value == 1512000)
-			value = policy->user_policy.max;
-	}
+	allow = set_filtered_limits(value, 1);
+	if (allow == BLACKLIST_DENY)
+		return count;
+	if (allow == BLACKLIST_RESTORE)
+		value = policy->user_policy.max;
+
 
 	if (value > BOOT_FREQ_LIMIT) {
 		static struct freq_work_struct *enable_oc_work;
@@ -626,7 +710,8 @@ static ssize_t store_scaling_max_freq
 			cpufreq_set_limit_defered(USER_MAX_START, value);
 	}
 #else
-	cpufreq_queue_dvfs(QDVFS_USER | QDVFS_MAX | QDVFS_SET, value);
+	cpufreq_queue_dvfs(QDVFS_SET | QDVFS_MAX |
+		(allow == BLACKLIST_ALLOW ? QDVFS_USER : 0), value);
 #endif
 	return count;
 }
