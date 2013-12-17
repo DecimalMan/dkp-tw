@@ -62,7 +62,7 @@
 #include <linux/secgpio_dvs.h>
 #endif
 
-//#define SYSFS
+#define SYSFS
 //#define DEBUG
 void msm_gpio_print_enabled(void);
 

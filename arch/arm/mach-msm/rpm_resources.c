@@ -32,7 +32,7 @@
 #include "idle.h"
 
 //#define DEBUG
-//#define SYSFS
+#define SYSFS
 //#define BOGUS
 
 /******************************************************************************
