@@ -90,6 +90,8 @@
 
 #define WAIT_FENCE_TIMEOUT 200
 
+static char rot_iommu_split_domain;
+
 struct tile_parm {
 	unsigned int width;  /* tile's width */
 	unsigned int height; /* tile's height */
@@ -172,7 +174,8 @@ static int msm_rotator_iommu_map_buf(int mem_id, unsigned char src,
 		ion_share(msm_rotator_dev->client, *pihdl));
 
 	if (ion_map_iommu(msm_rotator_dev->client, *pihdl,
-		src ? ROTATOR_SRC_DOMAIN : ROTATOR_DST_DOMAIN, GEN_POOL,
+		(src && rot_iommu_split_domain) ?
+		ROTATOR_SRC_DOMAIN : ROTATOR_DST_DOMAIN, GEN_POOL,
 		SZ_4K, 0, start, len, 0, ION_IOMMU_UNMAP_DELAYED)) {
 		pr_err("ion_map_iommu() failed\n");
 		return -EINVAL;
@@ -750,7 +753,8 @@ static void put_img(struct ion_handle *p_ihdl, unsigned char src)
 	if (!IS_ERR_OR_NULL(p_ihdl)) {
 		pr_debug("%s(): p_ihdl %p\n", __func__, p_ihdl);
 		ion_unmap_iommu(msm_rotator_dev->client, p_ihdl,
-		src ? ROTATOR_SRC_DOMAIN : ROTATOR_DST_DOMAIN, GEN_POOL);
+		(src && rot_iommu_split_domain)
+		? ROTATOR_SRC_DOMAIN : ROTATOR_DST_DOMAIN, GEN_POOL);
 
 		ion_free(msm_rotator_dev->client, p_ihdl);
 	}
@@ -1392,6 +1396,7 @@ static int __devinit msm_rotator_probe(struct platform_device *pdev)
 
 	pdata = pdev->dev.platform_data;
 	number_of_clks = pdata->number_of_clocks;
+	rot_iommu_split_domain = pdata->rot_iommu_split_domain;
 
 	INIT_LIST_HEAD(&msm_rotator_dev->fd_list);
 	msm_rotator_dev->pdev = pdev;
