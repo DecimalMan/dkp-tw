@@ -117,7 +117,7 @@ static void def_work_fn(struct work_struct *work)
 	 * isn't anymore.  We still need non-governor hotplug, so call
 	 * rq_hotplug_enable to migrate to auto-hotplug.
 	 */
-	if (unlikely(rq_info.def_interval > 5000) && !rq_info.hotplug_disabled) {
+	if (unlikely(rq_info.def_interval > 5000)) {
 		printk(KERN_DEBUG "rq-stats: where's mpdecision? migrating to auto-hotplug\n");
 		rq_hotplug_enable(HP_AUTOHP);
 	}
