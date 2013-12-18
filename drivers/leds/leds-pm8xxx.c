@@ -78,7 +78,6 @@ static u8 breathe_duty_pcts[20] = {
 	0, 2, 7, 15, 27, 41, 58, 76, 96, 117,
 	138, 159, 179, 197, 214, 228, 240, 248, 253, 255,
 };
-static u8 lpm_mult = 100;
 
 /* Generate the transition between color1 and color2
  */
@@ -93,8 +92,8 @@ static int generate_duty_table(int *target,
 		return 0;
 	/* Non-animated; either steady or plain blinking */
 	if (!(anim && time)) {
-		target[0] = color1 * lpm_mult / 255;
-		target[1] = color2 * lpm_mult / 255;
+		target[0] = color1 * 100 / 255;
+		target[1] = color2 * 100 / 255;
 		return 2;
 	}
 	/* Animate between two colors (color1 likely black) */
@@ -102,7 +101,7 @@ static int generate_duty_table(int *target,
 		if (unlikely(color1))
 			c = color1 * (255 - breathe_duty_pcts[i]);
 		target[i] = (color2 * breathe_duty_pcts[i] + c) *
-			lpm_mult / 255 / 255;
+			100 / 255 / 255;
 		if (breathe_duty_pcts[i] == 255) {
 			i++;
 			break;
@@ -315,26 +314,17 @@ static ssize_t led_pattern_store(struct device *dev,
 static DEVICE_ATTR(led_pattern, S_IRUGO | S_IWUSR | S_IWGRP,
 			led_pattern_show, led_pattern_store);
 
+static u8 quit_it_touchwiz = 0;
 static ssize_t led_lowpower_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, 4, "%d\n", lpm_mult == 25);
+	return snprintf(buf, 4, "%hhu\n", quit_it_touchwiz);
 }
 
 static ssize_t led_lowpower_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	struct leds_dev_data *info = dev_get_drvdata(dev);
-
-	mutex_lock(&info->led_work_lock);
-
-	lpm_mult = buf[0] == '1' ? 25 : 100;
-
-	if (!work_busy(&info->pattern_work))
-		schedule_work(&info->pattern_work);
-
-	mutex_unlock(&info->led_work_lock);
-
+	sscanf(buf, "%hhu", &quit_it_touchwiz);
 	return size;
 }
 
@@ -500,7 +490,6 @@ static int __devinit pm8xxx_led_probe(struct platform_device *pdev)
 		led_set(led_dat, 0);
 	}
 
-	lpm_mult = 100;
 	mutex_init(&info->led_work_lock);
 	INIT_WORK(&info->pattern_work, led_pattern_work);
 
