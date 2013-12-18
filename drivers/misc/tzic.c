@@ -52,11 +52,13 @@ static struct cdev tzic_cdev;
 
 #define LOG printk
 
-static int ic = STATE_IC_GOOD;
+//static int ic = STATE_IC_GOOD;
 static int set_tamper_fuse_cmd(void);
 static uint8_t get_tamper_fuse_cmd(void);
-static int set_tamper_fuse_cmd()
+
+static int set_tamper_fuse_cmd(void)
 {
+#if 0
 	uint32_t fuse_id = HLOS_IMG_TAMPER_FUSE;
 
 	if (ic == STATE_IC_BAD)
@@ -64,25 +66,25 @@ static int set_tamper_fuse_cmd()
 	ic = STATE_IC_BAD;
 	return scm_call(SCM_SVC_FUSE, SCM_BLOW_SW_FUSE_ID, &fuse_id,
 		sizeof(fuse_id), 0, 0);
+#endif
+	printk(KERN_DEBUG "%s: not blowing tamper fuse\n", __func__);
+	return 0;
 }
 
-static uint8_t get_tamper_fuse_cmd()
+static uint8_t get_tamper_fuse_cmd(void)
 {
 	uint32_t fuse_id = HLOS_IMG_TAMPER_FUSE;
-
-	void *cmd_buf;
-	size_t cmd_len;
-	size_t resp_len = 0;
 	uint8_t resp_buf;
-	cmd_buf = (void *)&fuse_id;
-	cmd_len = sizeof(fuse_id);
 
-	resp_len = sizeof(resp_buf);
-
-	scm_call(SCM_SVC_FUSE, SCM_IS_SW_FUSE_BLOWN_ID, cmd_buf,
-		cmd_len, &resp_buf, resp_len);
+	scm_call(SCM_SVC_FUSE, SCM_IS_SW_FUSE_BLOWN_ID, &fuse_id,
+		sizeof(fuse_id), &resp_buf, sizeof(resp_buf));
+#if 0
 	ic = resp_buf;
 	return resp_buf;
+#else
+	printk(KERN_DEBUG "%s: blown: %hhu\n", __func__, resp_buf);
+	return STATE_IC_GOOD;
+#endif
 }
 
 static long tzic_ioctl(struct file *file, unsigned cmd,
@@ -153,6 +155,8 @@ static int __init tzic_init(void)
 		LOG(KERN_INFO "cdev_add failed %d", rc);
 		goto class_device_destroy;
 	}
+
+	get_tamper_fuse_cmd();
 
 	return 0;
 
