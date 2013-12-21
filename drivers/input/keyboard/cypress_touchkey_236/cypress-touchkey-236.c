@@ -31,7 +31,6 @@
 #include <linux/workqueue.h>
 #include <linux/leds.h>
 #include <asm/mach-types.h>
-#include <linux/dkp.h>
 #include <linux/completion.h>
 
 #ifdef CONFIG_INTERACTION_HINTS
@@ -82,33 +81,42 @@ extern unsigned int system_rev;
 #define NUM_OF_RETRY_UPDATE	3
 #define NUM_OF_KEY		4
 
+enum touchkey_status {
+	TOUCHKEY_DISABLE,
+	TOUCHKEY_POWER,
+	TOUCHKEY_INPUT,
+};
+
+enum {
+	USUALLY,
+	ALWAYS,
+} fuck_touchwiz = USUALLY;
+
 struct cypress_touchkey_info {
-	struct i2c_client			*client;
+	struct i2c_client	*client;
 	struct cypress_touchkey_platform_data	*pdata;
-	struct input_dev			*input_dev;
-	struct early_suspend			early_suspend;
-	struct early_suspend			fb_suspend;
-	struct delayed_work			finish_resume_work;
+	struct input_dev	*input_dev;
+	struct early_suspend	early_suspend;
+	struct early_suspend	fb_suspend;
+	struct delayed_work	finish_resume_work;
 	char			phys[32];
-	unsigned char			keycode[NUM_OF_KEY];
+	unsigned char		keycode[NUM_OF_KEY];
 	u8			sensitivity[NUM_OF_KEY];
 	int			irq;
 	u8			fw_ver;
 	void (*power_onoff)(int);
 	int			touchkey_update_status;
-	struct led_classdev			leds;
-	enum led_brightness			brightness;
-	struct mutex			touchkey_led_mutex;
-	struct mutex pm_mutex;
-	struct delayed_work power_work;
-	struct completion anim_done;
-	int anim_idx;
-	bool is_powering_on;
+	struct led_classdev	leds;
+	enum led_brightness	brightness;
+	struct mutex		touchkey_led_mutex;
+	struct delayed_work	power_work;
+	struct completion	anim_done;
+	int			anim_idx;
+	enum touchkey_status	status;
 };
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void cypress_touchkey_early_suspend(struct early_suspend *h);
-static void cypress_touchkey_late_resume(struct early_suspend *h);
 static void cypress_touchkey_fb_suspend(struct early_suspend *h);
 static void cypress_touchkey_fb_resume(struct early_suspend *h);
 static void cypress_touchkey_finish_resume(struct work_struct *work);
@@ -119,8 +127,6 @@ static int current_pressed;
 #endif
 
 void cypress_led_voltage_set(int uv);
-static void cypress_touchkey_instant_onoff(struct work_struct *work);
-static void cypress_touchkey_animate_brightness(struct work_struct *work);
 
 /* The unaltered source implies a 3.3v limit, but the regulators are only
  * configured for 3.0v.  Let's stick to 3.0v to be safe.
@@ -130,34 +136,11 @@ static void cypress_touchkey_animate_brightness(struct work_struct *work);
 #define TIME_ON_MS (200)
 #define TIME_OFF_MS (350)
 
-static struct delayed_work *animation_work;
-static int touchkey_animation = 1;
-static int touchkey_brightness = 100;
-
-static void reconfig_led_anim(void) {
-	if (animation_work) {
-		flush_delayed_work(animation_work);
-		if (touchkey_animation) {
-			INIT_DELAYED_WORK(animation_work,
-				cypress_touchkey_animate_brightness);
-		} else {
-			INIT_DELAYED_WORK(animation_work,
-				cypress_touchkey_instant_onoff);
-			cypress_led_voltage_set(VOLTAGE_OFF +
-				(VOLTAGE_ON - VOLTAGE_OFF) *
-				touchkey_brightness / 100);
-		}
-	}
-}
-static __GATTR(touchkey_animation, 0, 1, reconfig_led_anim);
-static __GATTR(touchkey_brightness, 0, 100, reconfig_led_anim);
-
-// Fancy-schmancy 100-point sine curve
 static u8 anim_scale[] = {
-	0, 8, 16, 24, 32, 40, 48, 56, 63, 71, 79, 86, 94, 101, 109, 116, 123,
-	130, 137, 143, 150, 156, 163, 169, 175, 180, 186, 191, 196, 201, 206,
-	211, 215, 219, 223, 227, 231, 234, 237, 240, 243, 245, 247, 249, 250,
-	252, 253, 254, 254, 255,
+	0, 0, 0, 1, 1, 2, 4, 6, 8, 10, 14, 17, 21, 25, 30, 35, 41, 47, 54, 60,
+	68, 75, 83, 91, 99, 107, 116, 124, 133, 142, 150, 159, 167, 175, 183,
+	191, 199, 206, 213, 219, 225, 230, 235, 240, 244, 247, 250, 252, 254,
+	255,
 };
 
 static void cypress_touchkey_do_power(struct i2c_client *client, bool onoff) {
@@ -165,24 +148,13 @@ static void cypress_touchkey_do_power(struct i2c_client *client, bool onoff) {
 	i2c_smbus_write_byte_data(client, CYPRESS_GEN, buf);
 }
 
-static void cypress_touchkey_instant_onoff(struct work_struct *work) {
-	struct cypress_touchkey_info *info =
-		container_of(work, struct cypress_touchkey_info,
-			power_work.work);
-	mutex_lock(&info->touchkey_led_mutex);
-	cypress_touchkey_do_power(info->client, info->brightness != LED_OFF);
-	complete(&info->anim_done);
-	mutex_unlock(&info->touchkey_led_mutex);
-}
-
 static void cypress_touchkey_animate_brightness(struct work_struct *work) {
 	struct cypress_touchkey_info *info =
 		container_of(work, struct cypress_touchkey_info,
 			power_work.work);
-	int total, delay, step;
+	int total, delay, step, voltage;
 
-	if (!mutex_trylock(&info->touchkey_led_mutex))
-		return;
+	mutex_lock(&info->touchkey_led_mutex);
 
 	if (info->brightness == LED_OFF) {
 		total = msecs_to_jiffies(TIME_OFF_MS);
@@ -197,19 +169,20 @@ static void cypress_touchkey_animate_brightness(struct work_struct *work) {
 			goto anim_done;
 		}
 
-		cypress_led_voltage_set(VOLTAGE_OFF +
-			((((VOLTAGE_ON - VOLTAGE_OFF) *
-			anim_scale[info->anim_idx] / 100) *
-			touchkey_brightness) >> 8));
+		voltage = VOLTAGE_ON - VOLTAGE_OFF;
+		voltage = voltage * info->leds.max_brightness / LED_FULL;
+		voltage = voltage * anim_scale[info->anim_idx] / LED_FULL;
+		cypress_led_voltage_set(VOLTAGE_OFF + voltage);
 	} else {
 		total = msecs_to_jiffies(TIME_ON_MS);
 		delay = DIV_ROUND_UP(total, ARRAY_SIZE(anim_scale));
 		step = DIV_ROUND_UP(ARRAY_SIZE(anim_scale), total / delay);
 
+		voltage = VOLTAGE_ON - VOLTAGE_OFF;
+		voltage = voltage * info->leds.max_brightness / LED_FULL;
+
 		if (info->anim_idx == ARRAY_SIZE(anim_scale) - 1) {
-			cypress_led_voltage_set(VOLTAGE_OFF +
-				(VOLTAGE_ON - VOLTAGE_OFF) *
-				touchkey_brightness / 100);
+			cypress_led_voltage_set(VOLTAGE_OFF + voltage);
 			complete(&info->anim_done);
 			goto anim_done;
 		}
@@ -218,17 +191,13 @@ static void cypress_touchkey_animate_brightness(struct work_struct *work) {
 		if (info->anim_idx >= ARRAY_SIZE(anim_scale))
 			info->anim_idx = ARRAY_SIZE(anim_scale) - 1;
 
-		cypress_led_voltage_set(VOLTAGE_OFF +
-			((((VOLTAGE_ON - VOLTAGE_OFF) *
-			anim_scale[info->anim_idx] / 100) *
-			touchkey_brightness) >> 8));
+		voltage = voltage * anim_scale[info->anim_idx] / LED_FULL;
 
 		if (info->anim_idx == step) {
 			cypress_touchkey_do_power(info->client, 1);
 		}
 	}
 
-	cancel_delayed_work(&info->power_work);
 	schedule_delayed_work(&info->power_work, delay);
 
 anim_done:
@@ -244,9 +213,44 @@ static void cypress_touchkey_brightness_set(struct led_classdev *led_cdev,
 	struct cypress_touchkey_info *info =
 		container_of(led_cdev, struct cypress_touchkey_info, leds);
 
-	info->brightness = brightness;
+	/* If we're suspending, don't turn the lights back on.  Userspace is
+	 * massively brain-damaged, and relies on this behavior.
+	 */
+	if (info->status != TOUCHKEY_INPUT && brightness) {
+		fuck_touchwiz = ALWAYS;
+		return;
+	}
 
+	cancel_delayed_work_sync(&info->power_work);
+
+	mutex_lock(&info->touchkey_led_mutex);
+	info->brightness = brightness;
 	schedule_work(&info->power_work.work);
+	mutex_unlock(&info->touchkey_led_mutex);
+}
+
+static ssize_t brightness_level_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t size)
+{
+	struct cypress_touchkey_info *info = dev_get_drvdata(dev);
+	unsigned int data;
+
+	if (sscanf(buf, "%u", &data)) {
+		if (data <= LED_FULL) {
+			info->leds.max_brightness = data;
+			schedule_work(&info->power_work.work);
+			return size;
+		}
+	}
+	return -EINVAL;
+}
+
+static ssize_t brightness_level_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct cypress_touchkey_info *info = dev_get_drvdata(dev);
+	return sprintf(buf, "%u\n", info->leds.max_brightness);
 }
 
 static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
@@ -263,7 +267,7 @@ static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
 		goto out;
 	}
 
-	if (info->is_powering_on) {
+	if (info->status != TOUCHKEY_INPUT) {
 		dev_err(&info->client->dev, "%s: ignoring spurious boot "
 					"interrupt\n", __func__);
 		return IRQ_HANDLED;
@@ -495,9 +499,9 @@ static ssize_t touch_led_control(struct device *dev,
 	struct cypress_touchkey_info *info = dev_get_drvdata(dev);
 	int data;
 
-	dev_dbg(&info->client->dev, "called %s\n", __func__);
-	data = kstrtoul(buf, (int)NULL, 0);
-	cypress_touchkey_brightness_set(&info->leds, !!data);
+	if (sscanf(buf, "%u", &data))
+		cypress_touchkey_brightness_set(&info->leds,
+			data ? LED_FULL : LED_OFF);
 
 	return size;
 }
@@ -857,7 +861,8 @@ static DEVICE_ATTR(autocal_enable, S_IRUGO | S_IWUSR | S_IWGRP, NULL,
 		   autocalibration_enable);
 static DEVICE_ATTR(autocal_stat, S_IRUGO | S_IWUSR | S_IWGRP,
 		   autocalibration_status, NULL);
-
+static DEVICE_ATTR(touchkey_brightness_level, S_IRUGO | S_IWUSR | S_IWGRP,
+				brightness_level_show, brightness_level_store);
 
 static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
@@ -903,8 +908,6 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 	input_dev->id.bustype = BUS_I2C;
 	input_dev->dev.parent = &client->dev;
 
-	info->is_powering_on = true;
-
 	info->power_onoff(1);
 	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_KEY, input_dev->evbit);
@@ -915,7 +918,6 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 
 	input_set_drvdata(input_dev, info);
 	mutex_init(&info->touchkey_led_mutex);
-	mutex_init(&info->pm_mutex);
 
 	ret = input_register_device(input_dev);
 	if (ret) {
@@ -951,17 +953,16 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 		info->early_suspend.suspend = cypress_touchkey_early_suspend;
-		info->early_suspend.resume = cypress_touchkey_late_resume;
 		info->fb_suspend.suspend = cypress_touchkey_fb_suspend;
 		info->fb_suspend.resume = cypress_touchkey_fb_resume;
 		info->fb_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB-5;
 		register_early_suspend(&info->early_suspend);
+		register_early_suspend(&info->fb_suspend);
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 
 	INIT_DELAYED_WORK(&info->power_work, cypress_touchkey_animate_brightness);
 	INIT_DELAYED_WORK(&info->finish_resume_work, cypress_touchkey_finish_resume);
 	init_completion(&info->anim_done);
-	animation_work = &info->power_work;
 
 	info->leds.name = TOUCHKEY_BACKLIGHT;
 	info->leds.brightness = LED_FULL;
@@ -1151,7 +1152,14 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 		goto err_sysfs;
 	}
 
-	info->is_powering_on = false;
+	if (device_create_file(sec_touchkey,
+			&dev_attr_touchkey_brightness_level) < 0) {
+		pr_err("Failed to create device file(%s)!\n",
+			dev_attr_touchkey_brightness_level.attr.name);
+		goto err_sysfs;
+	}
+
+	info->status = TOUCHKEY_INPUT;
 	return 0;
 
 err_req_irq:
@@ -1175,7 +1183,6 @@ static int __devexit cypress_touchkey_remove(struct i2c_client *client)
 	struct cypress_touchkey_info *info = i2c_get_clientdata(client);
 	if (info->irq >= 0)
 		free_irq(info->irq, info);
-	animation_work = NULL;
 	mutex_destroy(&info->touchkey_led_mutex);
 	led_classdev_unregister(&info->leds);
 	input_unregister_device(info->input_dev);
@@ -1193,49 +1200,46 @@ static void cypress_touchkey_early_suspend(struct early_suspend *h) {
 	struct cypress_touchkey_info *info =
 		container_of(h, struct cypress_touchkey_info, early_suspend);
 
+	cancel_delayed_work_sync(&info->finish_resume_work);
+
+	if (info->status == TOUCHKEY_INPUT) {
+		info->status = TOUCHKEY_POWER;
+		disable_irq(info->irq);
+	}
+
 	mutex_lock(&info->touchkey_led_mutex);
 	INIT_COMPLETION(info->anim_done);
 	mutex_unlock(&info->touchkey_led_mutex);
 
 	cypress_touchkey_brightness_set(&info->leds, LED_OFF);
-
-	mutex_lock(&info->pm_mutex);
-	info->is_powering_on = true;
-	disable_irq(info->irq);
-	mutex_unlock(&info->pm_mutex);
-}
-
-static void cypress_touchkey_late_resume(struct early_suspend *h) {
-	struct cypress_touchkey_info *info =
-		container_of(h, struct cypress_touchkey_info, early_suspend);
-
-	mutex_lock(&info->pm_mutex);
-	enable_irq(info->irq);
-	info->is_powering_on = false;
-	mutex_unlock(&info->pm_mutex);
 }
 
 static void cypress_touchkey_fb_suspend(struct early_suspend *h) {
 	struct cypress_touchkey_info *info =
 		container_of(h, struct cypress_touchkey_info, fb_suspend);
 
-	wait_for_completion(&info->anim_done);
+	wait_for_completion_timeout(&info->anim_done,
+		msecs_to_jiffies(TIME_OFF_MS));
 
-	mutex_lock(&info->pm_mutex);
-	if (info->pdata->gpio_led_en)
-		cypress_touchkey_con_hw(info, false);
-	info->power_onoff(0);
-	mutex_unlock(&info->pm_mutex);
+	if (info->status == TOUCHKEY_POWER) {
+		info->status = TOUCHKEY_DISABLE;
+
+		if (info->pdata->gpio_led_en)
+			cypress_touchkey_con_hw(info, false);
+		info->power_onoff(0);
+	}
 }
 
 static void cypress_touchkey_fb_resume(struct early_suspend *h) {
 	struct cypress_touchkey_info *info =
 		container_of(h, struct cypress_touchkey_info, fb_suspend);
 
-	mutex_lock(&info->pm_mutex);
-	info->power_onoff(1);
-	if (info->pdata->gpio_led_en)
-		cypress_touchkey_con_hw(info, true);
+	if (info->status == TOUCHKEY_DISABLE) {
+		info->status = TOUCHKEY_POWER;
+		info->power_onoff(1);
+		if (info->pdata->gpio_led_en)
+			cypress_touchkey_con_hw(info, true);
+	}
 	schedule_delayed_work(&info->finish_resume_work,
 		msecs_to_jiffies(100));
 }
@@ -1245,8 +1249,14 @@ static void cypress_touchkey_finish_resume(struct work_struct *work) {
 		container_of(work, struct cypress_touchkey_info,
 			finish_resume_work.work);
 
-	cypress_touchkey_auto_cal(info);
-	mutex_unlock(&info->pm_mutex);
+	if (info->status == TOUCHKEY_POWER) {
+		info->status = TOUCHKEY_INPUT;
+		cypress_touchkey_auto_cal(info);
+		if (fuck_touchwiz == ALWAYS)
+			cypress_touchkey_brightness_set(&info->leds, LED_FULL);
+		enable_irq(info->irq);
+	}
+	fuck_touchwiz = USUALLY;
 }
 #endif
 
@@ -1269,8 +1279,6 @@ static int __init cypress_touchkey_init(void)
 {
 	int ret = 0;
 
-	dkp_register(touchkey_animation);
-	dkp_register(touchkey_brightness);
 	ret = i2c_add_driver(&cypress_touchkey_driver);
 	if (ret) {
 		pr_err("[TouchKey] cypress touch keypad registration failed. ret= %d\n",
