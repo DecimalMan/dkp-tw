@@ -87,6 +87,11 @@ enum touchkey_status {
 	TOUCHKEY_INPUT,
 };
 
+enum {
+	USUALLY,
+	ALWAYS,
+} fuck_touchwiz = USUALLY;
+
 struct cypress_touchkey_info {
 	struct i2c_client	*client;
 	struct cypress_touchkey_platform_data	*pdata;
@@ -211,8 +216,10 @@ static void cypress_touchkey_brightness_set(struct led_classdev *led_cdev,
 	/* If we're suspending, don't turn the lights back on.  Userspace is
 	 * massively brain-damaged, and relies on this behavior.
 	 */
-	if (info->status != TOUCHKEY_INPUT && brightness)
+	if (info->status != TOUCHKEY_INPUT && brightness) {
+		fuck_touchwiz = ALWAYS;
 		return;
+	}
 
 	cancel_delayed_work_sync(&info->power_work);
 
@@ -1245,8 +1252,11 @@ static void cypress_touchkey_finish_resume(struct work_struct *work) {
 	if (info->status == TOUCHKEY_POWER) {
 		info->status = TOUCHKEY_INPUT;
 		cypress_touchkey_auto_cal(info);
+		if (fuck_touchwiz == ALWAYS)
+			cypress_touchkey_brightness_set(&info->leds, LED_FULL);
 		enable_irq(info->irq);
 	}
+	fuck_touchwiz = USUALLY;
 }
 #endif
 
