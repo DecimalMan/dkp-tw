@@ -189,6 +189,8 @@ static void cypress_touchkey_brightness_set(struct led_classdev *led_cdev,
 		container_of(led_cdev, struct cypress_touchkey_info, leds);
 	int anim_total;
 
+	cancel_delayed_work_sync(&info->power_work);
+
 	mutex_lock(&info->touchkey_led_mutex);
 
 	info->brightness = brightness;
@@ -198,8 +200,6 @@ static void cypress_touchkey_brightness_set(struct led_classdev *led_cdev,
 	 */
 	if (info->status != TOUCHKEY_INPUT && brightness)
 		goto out;
-
-	cancel_delayed_work_sync(&info->power_work);
 
 	if (info->brightness == LED_OFF)
 		anim_total = msecs_to_jiffies(TIME_OFF_MS);
