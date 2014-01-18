@@ -147,7 +147,7 @@
 /* Packet free applicable unconditionally for sdio and sdspi.  Conditional if
  * bufpool was present for gspi bus.
  */
-#define PKTFREE2()		if ((bus->bus != SPI_BUS) || bus->usebufpool) \
+#define PKTFREE2()		if ((DHD_BUS != SPI_BUS) || bus->usebufpool) \
 					PKTFREE(bus->dhd->osh, pkt, FALSE);
 DHD_SPINWAIT_SLEEP_INIT(sdioh_spinwait_sleep);
 #if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
@@ -212,7 +212,6 @@ typedef struct dhd_bus {
 	uint32		orig_ramsize;		/* Size of RAM in SOCRAM (bytes) */
 	uint32		srmemsize;		/* Size of SRMEM */
 
-	uint32		bus;			/* gSPI or SDIO bus */
 	uint32		hostintmask;		/* Copy of Host Interrupt Mask */
 	uint32		intstatus;		/* Intstatus bits (events) pending */
 	bool		dpc_sched;		/* Indicates DPC schedule (intrpt rcvd) */
@@ -4499,7 +4498,7 @@ dhdsdio_read_control(dhd_bus_t *bus, uint8 *hdr, uint len, uint doff)
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 	/* Control data already received in aligned rxctl */
-	if ((bus->bus == SPI_BUS) && (!bus->usebufpool))
+	if ((DHD_BUS == SPI_BUS) && (!bus->usebufpool))
 		goto gotpkt;
 
 	ASSERT(bus->rxbuf);
@@ -4519,7 +4518,7 @@ dhdsdio_read_control(dhd_bus_t *bus, uint8 *hdr, uint len, uint doff)
 		goto gotpkt;
 
 	/* Copy the full data pkt in gSPI case and process ioctl. */
-	if (bus->bus == SPI_BUS) {
+	if (DHD_BUS == SPI_BUS) {
 		bcopy(hdr, bus->rxctl, len);
 		goto gotpkt;
 	}
@@ -5076,7 +5075,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 
 #ifdef BCMSPI
 	/* Get pktlen from gSPI device F0 reg. */
-	if (bus->bus == SPI_BUS) {
+	if (DHD_BUS == SPI_BUS) {
 		/* Peek in dstatus bits and find out size to do rx-read. */
 		dstatus = bcmsdh_get_dstatus(bus->sdh);
 		if (dstatus == 0)
@@ -5136,7 +5135,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 			uint16 nextlen = bus->nextlen;
 			bus->nextlen = 0;
 
-			if (bus->bus == SPI_BUS) {
+			if (DHD_BUS == SPI_BUS) {
 				rdlen = len = nextlen;
 			}
 			else {
@@ -5162,7 +5161,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 			/* Allocate a packet buffer */
 			dhd_os_sdlock_rxq(bus->dhd);
 			if (!(pkt = PKTGET(osh, rdlen + DHD_SDALIGN, FALSE))) {
-				if (bus->bus == SPI_BUS) {
+				if (DHD_BUS == SPI_BUS) {
 					bus->usebufpool = FALSE;
 					bus->rxctl = bus->rxbuf;
 					if (dhd_alignctl) {
@@ -5205,7 +5204,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 						bus->rxc_errors++;
 						dhd_os_sdunlock_rxq(bus->dhd);
 						dhdsdio_rxfail(bus, TRUE,
-						    (bus->bus == SPI_BUS) ? FALSE : TRUE);
+						    (DHD_BUS == SPI_BUS) ? FALSE : TRUE);
 						continue;
 					}
 				} else {
@@ -5218,7 +5217,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 					continue;
 				}
 			} else {
-				if (bus->bus == SPI_BUS)
+				if (DHD_BUS == SPI_BUS)
 					bus->usebufpool = TRUE;
 
 				ASSERT(!PKTLINK(pkt));
@@ -5255,7 +5254,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 					 * gSPI
 					 */
 					dhdsdio_rxfail(bus, TRUE,
-					      (bus->bus == SPI_BUS) ? FALSE : TRUE);
+					      (DHD_BUS == SPI_BUS) ? FALSE : TRUE);
 					continue;
 				}
 			}
@@ -5306,7 +5305,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 
 			/* Check for consistency with readahead info */
 #ifdef BCMSPI
-			if (bus->bus == SPI_BUS) {
+			if (DHD_BUS == SPI_BUS) {
 				if (bus->dwordmode) {
 					uint16 spilen;
 					if ((bus->sih->chip == BCM4329_CHIP_ID) &&
@@ -5329,7 +5328,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 				dhd_os_sdlock_rxq(bus->dhd);
 				PKTFREE2();
 				dhd_os_sdunlock_rxq(bus->dhd);
-				dhdsdio_rxfail(bus, TRUE, (bus->bus == SPI_BUS) ? FALSE : TRUE);
+				dhdsdio_rxfail(bus, TRUE, (DHD_BUS == SPI_BUS) ? FALSE : TRUE);
 				GSPI_PR55150_BAILOUT;
 				continue;
 			}
@@ -5343,7 +5342,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 
 #ifdef BCMSPI
 			/* Save the readahead length if there is one */
-			if (bus->bus == SPI_BUS) {
+			if (DHD_BUS == SPI_BUS) {
 				/* Use reconstructed dstatus bits and find out readahead size */
 				dstatus = bcmsdh_get_dstatus((void *)bus->sdh);
 				DHD_INFO(("Device status from bit-reconstruction = 0x%x\n",
@@ -5406,7 +5405,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 			/* Check window for sanity */
 			if ((uint8)(txmax - bus->tx_seq) > 0x40) {
 #ifdef BCMSPI
-				if ((bus->bus == SPI_BUS) && !(dstatus & STATUS_F2_RX_READY)) {
+				if ((DHD_BUS == SPI_BUS) && !(dstatus & STATUS_F2_RX_READY)) {
 					DHD_ERROR(("%s: got unlikely tx max %d with tx_seq %d\n",
 						__FUNCTION__, txmax, bus->tx_seq));
 					txmax = bus->tx_seq + 2;
@@ -5430,7 +5429,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 #endif
 
 			if (chan == SDPCM_CONTROL_CHANNEL) {
-				if (bus->bus == SPI_BUS) {
+				if (DHD_BUS == SPI_BUS) {
 					dhdsdio_read_control(bus, rxbuf, len, doff);
 					if (bus->usebufpool) {
 						dhd_os_sdlock_rxq(bus->dhd);
@@ -5451,7 +5450,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 				}
 			}
 
-			if ((bus->bus == SPI_BUS) && !bus->usebufpool) {
+			if ((DHD_BUS == SPI_BUS) && !bus->usebufpool) {
 				DHD_ERROR(("Received %d bytes on %d channel. Running out of "
 				           "rx pktbuf's or not yet malloced.\n", len, chan));
 				continue;
@@ -5473,7 +5472,7 @@ dhdsdio_readframes(dhd_bus_t *bus, uint maxframes, bool *finished)
 			goto deliver;
 		}
 		/* gSPI frames should not be handled in fractions */
-		if (bus->bus == SPI_BUS) {
+		if (DHD_BUS == SPI_BUS) {
 			break;
 		}
 
@@ -6914,7 +6913,6 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	bzero(bus, sizeof(dhd_bus_t));
 	bus->sdh = sdh;
 	bus->cl_devid = (uint16)devid;
-	bus->bus = DHD_BUS;
 	bus->tx_seq = SDPCM_SEQUENCE_WRAP - 1;
 	bus->usebufpool = FALSE; /* Use bufpool if allocated, else use locally malloced rxbuf */
 
