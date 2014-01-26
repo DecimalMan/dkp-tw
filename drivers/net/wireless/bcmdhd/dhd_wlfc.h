@@ -87,7 +87,7 @@ typedef struct wlfc_hanger {
 	wlfc_hanger_item_t items[0];
 } wlfc_hanger_t;
 
-#define WLFC_HANGER_SIZE(n)	((sizeof(wlfc_hanger_t) + \
+#define WLFC_HANGER_SIZE(n)	(sizeof(wlfc_hanger_t) + \
 	((n)*sizeof(wlfc_hanger_item_t)))
 
 #define WLFC_STATE_OPEN		1
