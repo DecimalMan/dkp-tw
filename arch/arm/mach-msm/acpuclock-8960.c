@@ -15,8 +15,11 @@
 #define MAX_BUS_LVL 7
 //#define ENABLE_VMIN
 //#define EXTRA_TABLES
+#define MIN_VDD   (600000)
+#define VMIN_VDD (1150000)
+#define MAX_VDD  (1400000)
 
-static unsigned int final_vmin = 700000;
+static unsigned int final_vmin;
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
 
@@ -30,6 +33,7 @@ static unsigned int final_vmin = 700000;
 #include <linux/cpufreq.h>
 #include <linux/cpu.h>
 #include <linux/regulator/consumer.h>
+#include <linux/dkp.h>
 
 #include <asm/mach-types.h>
 #include <asm/cpu.h>
@@ -1768,8 +1772,8 @@ static const int krait_needs_vmin(void)
 static void kraitv2_apply_vmin(struct acpu_level *tbl)
 {
 	for (; tbl->speed.khz != 0; tbl++)
-		if (tbl->vdd_core < 1150000)
-			tbl->vdd_core = 1150000;
+		if (tbl->vdd_core < VMIN_VDD)
+			tbl->vdd_core = VMIN_VDD;
 }
 #endif
 
@@ -1917,7 +1921,7 @@ static struct acpu_level * __init select_freq_plan(void)
 #ifdef ENABLE_VMIN
 		kraitv2_apply_vmin(acpu_freq_tbl);
 #else
-		final_vmin = 1150000;
+		final_vmin = VMIN_VDD;
 #endif
 
 	/* Find the max supported scaling frequency. */
@@ -1989,7 +1993,7 @@ static int acpuclk_update_all_vdd(int adj) {
 #define sanity_check(v) \
 	if (v < 10000) \
 		v = (v * 1000) + ((v % 5 == 2) ? 500 : 0); \
-	if (v > 1400000 || v < 700000) \
+	if (v > MAX_VDD || v < MIN_VDD) \
 		return -EINVAL;
 /* My kingdom for a regular expression! */
 static ssize_t _acpuclk_store_vdd_table(const char *buf, size_t count) {
@@ -2108,8 +2112,8 @@ static struct attribute_group vdd_attr_group = {
 void acpuclk_enable_oc_freqs(unsigned int freq) {
 	struct acpu_level *tgt = acpu_freq_tbl;
 
-	scalable_8960[CPU0].vreg[VREG_CORE].max_vdd = 1400000;
-	scalable_8960[CPU1].vreg[VREG_CORE].max_vdd = 1400000;
+	scalable_8960[CPU0].vreg[VREG_CORE].max_vdd = MAX_VDD;
+	scalable_8960[CPU1].vreg[VREG_CORE].max_vdd = MAX_VDD;
 
 	for (; tgt->l2_level; tgt++) {
 		if (tgt->speed.khz > BOOT_FREQ_LIMIT)
@@ -2126,11 +2130,11 @@ static ssize_t store_override_vmin(struct cpufreq_policy *policy,
 	int val;
 	if (sscanf(buf, "%i", &val) != 1)
 		return -EINVAL;
-	final_vmin = val ? 1150000 : 700000;
+	final_vmin = val ? VMIN_VDD : MIN_VDD;
 	return count;
 }
 static ssize_t show_override_vmin(struct cpufreq_policy *policy, char *buf) {
-	return sprintf(buf, "%u\n", final_vmin >= 1150000);
+	return sprintf(buf, "%u\n", final_vmin >= VMIN_VDD);
 }
 cpufreq_freq_attr_rw(override_vmin);
 
