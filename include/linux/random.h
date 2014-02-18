@@ -53,6 +53,7 @@ struct rnd_state {
 extern void add_input_randomness(unsigned int type, unsigned int code,
 				 unsigned int value);
 extern void add_interrupt_randomness(int irq);
+extern void add_device_randomness(const void *buf, unsigned int size);
 
 extern void (*get_random_bytes)(void *buf, int nbytes);
 extern void get_random_bytes_arch(void *buf, int nbytes);
