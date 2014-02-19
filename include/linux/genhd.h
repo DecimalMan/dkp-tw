@@ -186,7 +186,6 @@ struct gendisk {
 	struct device *driverfs_dev;  // FIXME: remove
 	struct kobject *slave_dir;
 
-	struct timer_rand_state *random;
 	atomic_t sync_io;		/* RAID */
 	struct disk_events *ev;
 #ifdef  CONFIG_BLK_DEV_INTEGRITY
@@ -429,10 +428,6 @@ extern void disk_block_events(struct gendisk *disk);
 extern void disk_unblock_events(struct gendisk *disk);
 extern void disk_check_events(struct gendisk *disk);
 extern unsigned int disk_clear_events(struct gendisk *disk, unsigned int mask);
-
-/* drivers/char/random.c */
-extern void add_disk_randomness(struct gendisk *disk);
-extern void rand_initialize_disk(struct gendisk *disk);
 
 static inline sector_t get_start_sect(struct block_device *bdev)
 {

@@ -308,6 +308,7 @@ static void row_add_request(struct request_queue *q,
 			"added request (total on queue=%d)", rqueue->nr_req);
 }
 
+#if 0
 /**
  * row_reinsert_req() - Reinsert request back to the scheduler
  * @q:	requests queue
@@ -364,6 +365,7 @@ static bool row_urgent_pending(struct request_queue *q)
 
 	return false;
 }
+#endif
 
 /**
  * row_remove_request() -  Remove given request from scheduler
