@@ -92,10 +92,14 @@ static int a2220_send_msg(struct a2220_drv *a2220, const char *msg) {
 	}
 
 	if (!memcmp(msg, suspend_mode, 4)) {
-		printk(KERN_DEBUG "%s: cmd is suspend, don't await ack\n",
-			__func__);
-		a2220->suspended = 1;
-		return 0;
+		rc = a2220_i2c_read(a2220, buf, 4);
+		if (rc < 0) {
+			a2220->suspended = 1;
+			return 0;
+		}
+		pr_warn("%s: standby rejected, rc %i, %02x%02x%02x%02x\n",
+			__func__, rc, buf[0], buf[1], buf[2], buf[3]);
+		return -EAGAIN;
 	}
 
 	retry = 4;
@@ -143,8 +147,10 @@ static int a2220_hw_sync(struct a2220_drv *a2220) {
 		msleep(20);
 		if (!(rc = a2220_send_msg(a2220, sync_chip)))
 			break;
+		/*
 		if (retry == 2 && a2220_send_msg(a2220, reset_chip))
 			pr_warn("%s: reset_chip failed!\n", __func__);
+		*/
 		pr_warn("%s: sync failed, retrying\n", __func__);
 	}
 	return rc;
@@ -160,6 +166,8 @@ static int a2220_hw_init(struct a2220_drv *a2220) {
 	msleep(1);
 	gpio_set_value(a2220->pdata->gpio_reset, 1);
 	msleep(50);
+
+	a2220->config = A2220_PATH_MAX;
 
 	rc = a2220_i2c_write(a2220, buf, 2);
 	if (rc < 0) {
@@ -187,7 +195,7 @@ static int a2220_hw_init(struct a2220_drv *a2220) {
 		remain -= to_write;
 	}
 
-	if (remain) {
+	if (rc < 0) {
 		pr_err("%s: error writing firmware\n", __func__);
 		return rc;
 	}
@@ -208,7 +216,7 @@ static int a2220_set_config(struct a2220_drv *a2220, unsigned int newid) {
 	pr_warn("%s: setting path %i\n", __func__, newid);
 	if (unlikely(a2220->config == newid))
 		return 0;
-	if (unlikely(newid > A2220_PATH_MAX))
+	if (unlikely(newid >= A2220_PATH_MAX))
 		return -EINVAL;
 
 	if (!a2220->suspended)
@@ -224,9 +232,9 @@ static int a2220_set_config(struct a2220_drv *a2220, unsigned int newid) {
 		if (rc = a2220_hw_init(a2220))
 			return rc;
 	}
+	a2220->suspended = 0;
 
 resumed:
-	a2220->suspended = 0;
 	pr_warn("%s: chip is resumed\n", __func__);
 	msg = a2220_config_params[newid].data;
 	size = a2220_config_params[newid].len;
@@ -241,7 +249,8 @@ resumed:
 		msg += 4;
 		size -= 4;
 	}
-	a2220->config = newid;
+	if (!rc)
+		a2220->config = newid;
 	return rc;
 }
 
@@ -393,6 +402,14 @@ static int a2220_remove(struct i2c_client *client) {
 
 static int a2220_suspend(struct i2c_client *client, pm_message_t mesg)
 {
+	struct a2220_drv *a2220 = i2c_get_clientdata(client);
+	if (unlikely(!a2220->suspended || a2220->config == A2220_PATH_MAX)) {
+		pr_warn("%s: trying to suspend\n", __func__);
+		msm_xo_mode_vote(a2220->xo, MSM_XO_MODE_ON);
+		if (a2220_set_config(a2220, A2220_PATH_INCALL_RECEIVER_NSOFF))
+			pr_warn("%s: couldn't suspend a2220!\n", __func__);
+		msm_xo_mode_vote(a2220->xo, MSM_XO_MODE_OFF);
+	}
         return 0;
 }
 
