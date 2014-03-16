@@ -139,9 +139,9 @@
 #define	ADC_CARDOCK		0x1d
 #define	ADC_OPEN		0x1f
 
-/* (1 = enabled) | (2 = state_usb) | (4 = state_fast) */
+/* (1 = enabled) | (2 = state_usb) | (4 = state_fast) | (8 = state_mhl) */
 static int force_fast_charge;
-static int fast_charge_setting;
+int fast_charge_setting;
 
 int uart_connecting;
 EXPORT_SYMBOL(uart_connecting);
@@ -1413,25 +1413,33 @@ static int fsa9485_resume(struct i2c_client *client)
 	return 0;
 }
 
+void fsa9485_notify_mhl(bool attached) {
+	force_fast_charge = (force_fast_charge & ~8) | (attached ? 8 : 0);
+}
+
 /* This is kind of hacky, but most of this code already abuses local_usbsw. */
 static inline void ffc_migrate(void) {
         struct fsa9485_platform_data *pdata;
         force_fast_charge = (force_fast_charge & ~1 ) | fast_charge_setting;
         if (!local_usbsw || !local_usbsw->pdata) return;
         pdata = local_usbsw->pdata;
-        if (pdata->usb_cb && pdata->charger_cb) {
-                if (force_fast_charge == 3) {
-                        /* enabled | state_usb */
-                        pdata->usb_cb(FSA9485_DETACHED);
-                        pdata->charger_cb(FSA9485_ATTACHED);
-                        force_fast_charge = 5;
-                } else if (force_fast_charge == 4) {
-                        /* !enabled | state_fast */
-                        pdata->charger_cb(FSA9485_DETACHED);
-                        pdata->usb_cb(FSA9485_ATTACHED);
-                        force_fast_charge = 2;
-                }
-        }
+	if (!(force_fast_charge & 8)) {
+		if (pdata->usb_cb && pdata->charger_cb) {
+			if (force_fast_charge == 3) {
+				/* enabled | state_usb */
+				pdata->usb_cb(FSA9485_DETACHED);
+				pdata->charger_cb(FSA9485_ATTACHED);
+				force_fast_charge = 5;
+			} else if (force_fast_charge == 4) {
+				/* !enabled | state_fast */
+				pdata->charger_cb(FSA9485_DETACHED);
+				pdata->usb_cb(FSA9485_ATTACHED);
+				force_fast_charge = 2;
+			}
+		}
+	} else {
+		pdata->mhl_cb(1);
+	}
 }
 static __GATTR_NAME(fast_charge_setting, force_fast_charge, 0, 1, ffc_migrate);
 static struct attribute *ffc_attrs[] = {
