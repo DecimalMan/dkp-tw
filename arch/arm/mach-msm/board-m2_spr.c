@@ -1160,6 +1160,8 @@ static struct platform_device touchkey_i2c_gpio_device = {
 
 #endif
 
+extern int fast_charge_setting;
+extern void fsa9485_notify_mhl(bool attached);
 #ifdef CONFIG_USB_SWITCH_FSA9485
 static enum cable_type_t set_cable_status;
 #ifdef CONFIG_MHL_NEW_CBUS_MSC_CMD
@@ -1171,6 +1173,12 @@ static void fsa9485_mhl_cb(bool attached, int mhl_charge)
 
 	pr_info("fsa9485_mhl_cb attached (%d), mhl_charge(%d)\n",
 			attached, mhl_charge);
+
+	/* Notify fast charge core */
+	fsa9485_notify_mhl(attached);
+
+	if (fast_charge_setting)
+		mhl_charge = 2;
 
 	if (attached) {
 		switch (mhl_charge) {
@@ -1217,6 +1225,11 @@ static void fsa9485_mhl_cb(bool attached, int mhl_charge)
 		pr_err("%s: fail to set power_suppy ONLINE property(%d)\n",
 			__func__, ret);
 	}
+}
+
+static void dummy_mhl_cb(bool attached)
+{
+	fsa9485_mhl_cb(attached, 0);
 }
 #else
 static void fsa9485_mhl_cb(bool attached)
@@ -1596,6 +1609,7 @@ static struct platform_device fsa_i2c_gpio_device = {
 };
 
 static struct fsa9485_platform_data fsa9485_pdata = {
+	.mhl_cb = dummy_mhl_cb,
 	.otg_cb = fsa9485_otg_cb,
 	.usb_cb = fsa9485_usb_cb,
 	.charger_cb = fsa9485_charger_cb,
